@@ -1,0 +1,8 @@
+# Stable symlink /dev/enocean for the EnOcean USB stick, so ser2net's connector never
+# breaks when the kernel reassigns ttyUSBx after a reboot or re-plug.
+#
+# The USB300/FAM-USB use an FTDI FT232 (0403:6001). If you have more than one FTDI device,
+# UNCOMMENT the ATTRS{serial} match below (find it with: udevadm info -a -n /dev/ttyUSB0 | grep serial)
+# to disambiguate.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="enocean"
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", ATTRS{serial}=="FTXXXXXX", SYMLINK+="enocean"

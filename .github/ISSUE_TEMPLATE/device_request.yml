@@ -1,0 +1,48 @@
+name: Device support request
+description: Ask for a new device / EEP to be supported or mapped
+labels: ["device-support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most of the EnOcean range already decodes out of the box via `eep:` — try the generic profile
+        for its family (`F6-…`, `D5-…`, `A5-…`, `D2-…`) first and watch the log. If that doesn't work,
+        a **telegram capture** is what makes support possible.
+  - type: input
+    id: device
+    attributes:
+      label: Device (manufacturer + model)
+      placeholder: "e.g. Eltako FSB61NP, or Hoppe FHF window handle"
+    validations:
+      required: true
+  - type: input
+    id: eep
+    attributes:
+      label: EEP (if known)
+      description: RORG-FUNC-TYPE from the datasheet.
+      placeholder: "e.g. D2-01-11"
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What should it do in Home Assistant?
+      options:
+        - Read-only sensor / binary sensor
+        - Controllable actuator (switch / light / cover)
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: capture
+    attributes:
+      label: Telegram capture
+      description: >
+        Set `log_packets: true` and `debug: true`, actuate the device (each action / channel; for a
+        cover open + close), and paste the `received:` lines and `_RAW_DATA_` values, labelling what
+        each action was.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: datasheet
+    attributes:
+      label: Datasheet / EEP reference link (optional)

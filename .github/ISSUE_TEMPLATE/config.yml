@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup guide & documentation (Wiki)
+    url: https://github.com/t-ice/enocean-mqtt-ha/wiki
+    about: Step-by-step setup, configuration, Eltako pairing, examples and troubleshooting.
+  - name: Questions & discussion
+    url: https://github.com/t-ice/enocean-mqtt-ha/discussions
+    about: For usage questions and general discussion (not bugs), please use Discussions.

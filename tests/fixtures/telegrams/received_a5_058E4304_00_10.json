@@ -1,0 +1,29 @@
+{
+  "direction": "received",
+  "sender": "05:8E:43:04",
+  "destination": "FF:FF:FF:FF",
+  "dbm": -58,
+  "packet_type": 1,
+  "data": [
+    165,
+    0,
+    123,
+    100,
+    15,
+    5,
+    142,
+    67,
+    4,
+    129
+  ],
+  "optional": [
+    0,
+    255,
+    255,
+    255,
+    255,
+    58,
+    0
+  ],
+  "rorg": 165
+}

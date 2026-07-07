@@ -1,0 +1,22 @@
+# yamllint config — tuned for Home Assistant add-on YAML (config.yaml, build.yaml, translations).
+extends: default
+
+rules:
+  # HA add-on files are hand-maintained; 100 cols matches the Python line length (warn, don't fail).
+  line-length:
+    max: 100
+    level: warning
+  # `---` document markers are optional for these single-doc files.
+  document-start: disable
+  # HA option keys use bare on/off/auto (boot: auto, uart: true); don't flag them as ambiguous.
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+
+ignore: |
+  .venv/
+  dist/
+  tests/integration/.tmp/

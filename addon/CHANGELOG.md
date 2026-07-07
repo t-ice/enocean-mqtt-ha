@@ -1,0 +1,29 @@
+# Changelog
+
+## 1.0.0
+
+A Home Assistant add-on that bridges **EnOcean** devices to **MQTT**.
+
+- **Whole EEP range decoded** — RPS `F6`, 1BS `D5`, 4BS `A5` and VLD `D2`, from a code-defined EEP
+  engine validated against the official EnOcean certification vectors. Entities auto-appear via
+  **MQTT discovery**.
+- **First-class Eltako support** — one-line `model: eltako/…` entries for FSR14 relays/lights, FUD14
+  dimmers and FSB14 blinds/covers (plus their Series-61/TF61 siblings), including **cover-position
+  tracking that survives restarts**.
+- **Transmit / control** — Eltako A5-38-08 switch/light + A5-3F-7F covers, D2-05 blinds, D2-01
+  relays/dimmers, and F6 rocker emulation with one-click momentary **AI / AO / BI / BO** press buttons.
+- **Secure telegrams (AES/VAES)** per *Security of EnOcean Radio Networks v3.02* — decode
+  (VAES + AES-CMAC + rolling-code replay protection, 24/32-bit RLC, 3/4-byte CMAC), hands-free
+  **teach-in** (`SEC_TI`, incl. the PSK path via the `secure_psk` option), **transmit**, and
+  **durable rolling codes** that survive restarts. Configure a device by hand with `security: true` +
+  `key:`, or let learn mode provision it.
+- **Transceiver connection** — a local USB stick (`device` serial path, e.g. `/dev/ttyUSB0`) **or** a
+  remote ser2net endpoint (`tcp` `host:port`, e.g. a Raspberry Pi); TCP wins if both are set. No `socat`/PTY bridge; the
+  daemon self-heals transceiver and MQTT drops with exponential-backoff reconnect.
+- **Teach-in** via a Home Assistant LEARN button (auto-off timeout for safety): UTE and secure devices
+  are auto-provisioned and appended to your `devices.yaml` (comments/formatting preserved).
+- **Transceiver diagnostics** — firmware/chip-id, repeater level (with a `repeater` option), available
+  TX duty-cycle % and a transmit-failures counter, published as diagnostic sensors.
+- **Availability (LWT), RSSI and last-seen** per device; YAML device list with load-time validation.
+- **Ships as a prebuilt multi-arch image** (`aarch64`, `amd64`) from GHCR with a signed
+  build-provenance attestation, and runs confined by an **AppArmor** profile.

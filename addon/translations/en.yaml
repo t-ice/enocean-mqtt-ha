@@ -1,0 +1,68 @@
+configuration:
+  device:
+    name: EnOcean device
+    description: >-
+      Local EnOcean USB stick's serial path (e.g. /dev/ttyUSB0) — the add-on lists the available
+      serial devices in its startup log, so start it once and copy the right path here. Use this for a
+      stick plugged into the Home Assistant machine. Leave empty when using a TCP (ser2net) endpoint
+      below; if both are set, TCP wins.
+  tcp:
+    name: ser2net (TCP)
+    description: >-
+      Remote transceiver over ser2net, as host:port (e.g. 192.168.10.31:3000) — for a stick on a
+      Raspberry Pi. Connected natively (no socat). If both this and Device are set, TCP wins.
+  device_file:
+    name: Device file
+    description: >-
+      Path to your devices.yaml list. Default /config/enocean2mqtt/devices.yaml.
+  log_file:
+    name: Log file
+    description: Daemon log path.
+  log_level:
+    name: Log level
+    description: >-
+      How much to log: error, warning, info (default) or debug. Choose debug to log every raw
+      telegram — handy for finding a device's address.
+  send_interval_ms:
+    name: Send interval (ms)
+    description: >-
+      Minimum milliseconds between transmitted telegrams so command bursts (e.g. "close all
+      covers") aren't dropped. Default 100 (≈ the EnOcean RX maturity time); 0 disables it.
+  repeater:
+    name: Repeater
+    description: >-
+      Re-broadcast telegrams for extra range: off (default), or level 1/2. Applied to the
+      transceiver at startup; the active level appears as a diagnostic sensor.
+  secure_psk:
+    name: Secure teach-in PSK (advanced)
+    description: >-
+      Pre-shared key (32 hex chars) to decrypt PSK-protected secure teach-ins. Most secure teach-ins
+      send the key in the clear; leave empty unless a device requires a PSK.
+  mqtt_host:
+    name: MQTT host (advanced)
+    description: >-
+      Explicit broker host. Leave unset to auto-use the Supervisor 'mqtt' service.
+  mqtt_port:
+    name: MQTT port (advanced)
+    description: Explicit broker port (default 1883).
+  mqtt_user:
+    name: MQTT user (advanced)
+    description: Explicit broker username.
+  mqtt_pwd:
+    name: MQTT password (advanced)
+    description: Explicit broker password.
+  mqtt_ssl:
+    name: MQTT TLS
+    description: Enable TLS to the MQTT broker.
+  mqtt_ssl_ca_certs:
+    name: TLS CA certificate
+    description: Path to the CA certificate (PEM), e.g. under /ssl or /config.
+  mqtt_ssl_certfile:
+    name: TLS client certificate
+    description: Path to the client certificate (PEM), for mutual TLS.
+  mqtt_ssl_keyfile:
+    name: TLS client key
+    description: Path to the client private key (PEM), for mutual TLS.
+  mqtt_ssl_insecure:
+    name: TLS skip verification
+    description: Do not verify the broker certificate (testing only — insecure).

@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Install (frozen)
+        run: uv sync --frozen --extra dev
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check src/enocean2mqtt tests tools
+      - name: Mypy
+        run: uv run mypy
+      - name: Pytest (with coverage gate)
+        run: uv run pytest -q --cov=src/enocean2mqtt --cov-report=term-missing
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y shellcheck
+          shellcheck -x addon/run.sh pi/install.sh tools/*.sh
+      - name: bats
+        run: |
+          sudo apt-get install -y bats
+          bats tests/addon/
+
+  addon-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate AppArmor profile
+        # -Q parses + resolves the includes (tunables/global, abstractions/*) without loading into
+        # the kernel — catches syntax/include errors the macOS dev box cannot.
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y apparmor
+          sudo apparmor_parser -Q addon/apparmor.txt
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: addon/Dockerfile
+      - name: Lint add-on config
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./addon"
+
+  addon-build:
+    # Each arch builds on its own native runner (aarch64 uses the free public arm64 runner), so no QEMU
+    # emulation is needed — faster and faithful to the shipped image.
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            base: ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.24
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            base: ghcr.io/home-assistant/aarch64-base-python:3.12-alpine3.24
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build add-on image (${{ matrix.arch }}, native, repo-root context)
+        run: |
+          docker buildx build \
+            -f addon/Dockerfile --build-arg BUILD_FROM=${{ matrix.base }} \
+            --load -t enocean-mqtt-ha:ci-${{ matrix.arch }} .
+      - name: Smoke test entrypoint (${{ matrix.arch }})
+        run: docker run --rm enocean-mqtt-ha:ci-${{ matrix.arch }} enocean2mqtt --help

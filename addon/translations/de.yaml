@@ -1,0 +1,68 @@
+configuration:
+  device:
+    name: EnOcean-Gerät
+    description: >-
+      Serieller Pfad des lokalen EnOcean-USB-Sticks (z. B. /dev/ttyUSB0) — das Add-on listet die
+      verfügbaren seriellen Geräte in seinem Start-Log; einmal starten und den passenden Pfad hier
+      eintragen. Für einen direkt am Home-Assistant-Rechner steckenden Stick. Leer lassen, wenn unten
+      ein TCP (ser2net)-Endpunkt gesetzt ist; sind beide gesetzt, gewinnt TCP.
+  tcp:
+    name: ser2net (TCP)
+    description: >-
+      Entfernter Transceiver über ser2net als host:port (z. B. 192.168.10.31:3000) — für einen Stick
+      an einem Raspberry Pi. Nativ verbunden (kein socat). Wenn beides gesetzt ist, gewinnt TCP.
+  device_file:
+    name: Gerätedatei
+    description: >-
+      Pfad zu deiner devices.yaml-Geräteliste. Standard /config/enocean2mqtt/devices.yaml.
+  log_file:
+    name: Logdatei
+    description: Pfad der Daemon-Logdatei.
+  log_level:
+    name: Log-Level
+    description: >-
+      Wie viel geloggt wird: error, warning, info (Standard) oder debug. debug loggt zusätzlich
+      jedes Roh-Telegramm — praktisch, um die Adresse eines Geräts zu finden.
+  send_interval_ms:
+    name: Sendeintervall (ms)
+    description: >-
+      Mindestabstand in Millisekunden zwischen gesendeten Telegrammen, damit Befehls-Bursts (z. B.
+      „alle Rollläden schließen") nicht verloren gehen. Standard 100 (≈ EnOcean-RX-Reifezeit); 0 aus.
+  repeater:
+    name: Repeater
+    description: >-
+      Telegramme für mehr Reichweite erneut senden: aus (Standard) oder Stufe 1/2. Wird beim Start
+      auf den Transceiver angewendet; die aktive Stufe erscheint als Diagnose-Sensor.
+  secure_psk:
+    name: Secure-Teach-in-PSK (erweitert)
+    description: >-
+      Pre-Shared-Key (32 Hex-Zeichen) zum Entschlüsseln PSK-geschützter Secure-Teach-ins. Die meisten
+      Secure-Teach-ins senden den Schlüssel im Klartext; leer lassen, sofern kein Gerät einen PSK verlangt.
+  mqtt_host:
+    name: MQTT-Host (erweitert)
+    description: >-
+      Expliziter Broker-Host. Leer lassen, um automatisch den Supervisor-Dienst 'mqtt' zu verwenden.
+  mqtt_port:
+    name: MQTT-Port (erweitert)
+    description: Expliziter Broker-Port (Standard 1883).
+  mqtt_user:
+    name: MQTT-Benutzer (erweitert)
+    description: Expliziter Broker-Benutzername.
+  mqtt_pwd:
+    name: MQTT-Passwort (erweitert)
+    description: Expliziter Broker-Passwort.
+  mqtt_ssl:
+    name: MQTT-TLS
+    description: TLS zum MQTT-Broker aktivieren.
+  mqtt_ssl_ca_certs:
+    name: TLS-CA-Zertifikat
+    description: Pfad zum CA-Zertifikat (PEM), z. B. unter /ssl oder /config.
+  mqtt_ssl_certfile:
+    name: TLS-Client-Zertifikat
+    description: Pfad zum Client-Zertifikat (PEM), für gegenseitiges TLS.
+  mqtt_ssl_keyfile:
+    name: TLS-Client-Schlüssel
+    description: Pfad zum privaten Client-Schlüssel (PEM), für gegenseitiges TLS.
+  mqtt_ssl_insecure:
+    name: TLS-Prüfung überspringen
+    description: Broker-Zertifikat nicht prüfen (nur zum Testen — unsicher).

@@ -1,0 +1,307 @@
+# Machine-readable Eltako / EnOcean device catalog.
+#
+# Single source of truth for the catalog-consistency test (tests/test_catalog.py). Whether a
+# device is actually MAPPED is computed from the code-defined MAPPING,
+# not stored here (so the two never drift).
+#
+# verification tiers:
+#   verified - present in the live fleet and/or confirmed from the captured telegram log
+#   manual   - modelled from the datasheet / EEP spec, but not hardware-tested in this repo
+#   generic  - standard EEP with no Eltako-specific quirks
+#
+# An entry has EITHER model_key (an Eltako actuator, keyed under MAPPING `eltako:`) OR eep
+# (a standard EEP sensor declared by rorg/func/type). command_eep/status_eep document the EEPs
+# an actuator uses to be commanded / to report state.
+
+meta:
+  note: >
+    Series 14 bus actuators (FSR14, FSB14, FUD14, ...) sit behind an FGW14/FAM14 RS485 gateway;
+    each channel is commanded from sender = base_id + offset. Wireless 61/71 devices are direct.
+  sources:
+    - "Eltako Serie 14 RS485-Bus manual"
+    - "EnOcean Equipment Profiles (EEP) 2.6.7 / 3.1"
+
+devices:
+  # ---- Switch / relay actuators -------------------------------------------------------------
+  fsr14:
+    manufacturer: Eltako
+    name: FSR14-2x / FSR14-4x / FSR14SSR
+    series: "14"
+    category: switch
+    entity_types: [switch, light]
+    model_key: fsr14
+    command_eep: A5-38-08
+    status_eep: [F6-02-01]
+    channels: 4
+    verification: verified
+    datasheet: https://www.eltako.com/fileadmin/downloads/en/_datasheets/Datasheet_FSR14-4x.pdf
+  fsr61:
+    manufacturer: Eltako
+    name: FSR61 (wireless impulse relay)
+    series: "61"
+    category: switch
+    entity_types: [switch, light]
+    model_key: fsr61
+    command_eep: A5-38-08
+    status_eep: [F6-02-01]
+    verification: manual
+  fl62:
+    manufacturer: Eltako
+    name: FL62 (wireless impulse relay)
+    series: "62"
+    category: switch
+    entity_types: [switch, light]
+    model_key: fl62
+    command_eep: A5-38-08
+    status_eep: [F6-02-01]
+    verification: manual
+  tf61l:
+    manufacturer: Eltako
+    name: TF61L (Tap-radio impulse relay, + unlock/feedback)
+    series: "61"
+    category: switch
+    entity_types: [switch, light]
+    model_key: tf61l
+    command_eep: A5-38-08
+    status_eep: [F6-02-01]
+    verification: manual
+  fd62:
+    manufacturer: Eltako
+    name: FD62 (wireless dimmer)
+    series: "62"
+    category: dimmer
+    entity_types: [light]
+    model_key: fd62
+    command_eep: A5-38-08
+    status_eep: [A5-38-08]
+    verification: manual
+  f4sr14:
+    manufacturer: Eltako
+    name: F4SR14-LED / F4SR14 (4-channel relay)
+    series: "14"
+    category: switch
+    entity_types: [switch]
+    model_key: f4sr14
+    command_eep: A5-38-08
+    status_eep: [F6-02-01]
+    verification: manual
+  fsdg14:
+    manufacturer: Eltako
+    name: FSDG14 (energy/metering gateway)
+    series: "14"
+    category: sensor
+    entity_types: [sensor]
+    eep: A5-12-01
+    verification: manual
+
+  # ---- Dimmers -----------------------------------------------------------------------------
+  fud14:
+    manufacturer: Eltako
+    name: FUD14 (universal dimmer)
+    series: "14"
+    category: dimmer
+    entity_types: [light]
+    model_key: fud14
+    command_eep: A5-38-08
+    status_eep: [A5-38-08, F6-02-01]
+    verification: manual
+  fud61:
+    manufacturer: Eltako
+    name: FUD61NP(N) (wireless dimmer)
+    series: "61"
+    category: dimmer
+    entity_types: [light]
+    model_key: fud61
+    command_eep: A5-38-08
+    status_eep: [A5-38-08]
+    verification: manual
+  fdg14:
+    manufacturer: Eltako
+    name: FDG14 (DALI gateway)
+    series: "14"
+    category: dimmer
+    entity_types: [light]
+    model_key: fdg14
+    command_eep: A5-38-08
+    status_eep: [A5-38-08]
+    verification: manual
+  fsg14:
+    manufacturer: Eltako
+    name: FSG14/1-10V (1-10V control dimmer)
+    series: "14"
+    category: dimmer
+    entity_types: [light]
+    model_key: fsg14
+    command_eep: A5-38-08
+    status_eep: [A5-38-08]
+    verification: manual
+  tf61d:
+    manufacturer: Eltako
+    name: TF61D (Tap-radio flush dimmer, same profile as FUD14)
+    series: "61"
+    category: dimmer
+    entity_types: [light]
+    model_key: tf61d
+    command_eep: A5-38-08
+    status_eep: [A5-38-08]
+    verification: manual
+
+  # ---- Blinds / shutters -------------------------------------------------------------------
+  fsb14:
+    manufacturer: Eltako
+    name: FSB14 (blind/shutter actuator)
+    series: "14"
+    category: cover
+    entity_types: [cover]
+    model_key: fsb14
+    command_eep: A5-3F-7F
+    status_eep: [A5-3F-7F, F6-02-01]
+    channels: 2
+    server_side_position: true
+    verification: verified
+    datasheet: https://www.eltako.com/fileadmin/downloads/en/_datasheets/
+  fsb61:
+    manufacturer: Eltako
+    name: FSB61 (wireless shutter)
+    series: "61"
+    category: cover
+    entity_types: [cover]
+    model_key: fsb61
+    command_eep: A5-3F-7F
+    status_eep: [A5-3F-7F, F6-02-01]
+    server_side_position: true
+    verification: manual
+  fsb61np:
+    manufacturer: Eltako
+    name: FSB61NP (wireless shutter, no-neutral) — same profile as FSB14
+    series: "61"
+    category: cover
+    entity_types: [cover]
+    model_key: fsb61np
+    command_eep: A5-3F-7F
+    status_eep: [A5-3F-7F, F6-02-01]
+    server_side_position: true
+    verification: manual
+  fj62:
+    manufacturer: Eltako
+    name: FJ62 (shutter/blind)
+    series: "62"
+    category: cover
+    entity_types: [cover]
+    model_key: fj62
+    command_eep: A5-3F-7F
+    status_eep: [A5-3F-7F, F6-02-01]
+    server_side_position: true
+    verification: manual
+  tf61j:
+    manufacturer: Eltako
+    name: TF61J (Tap-radio shutter)
+    series: "61"
+    category: cover
+    entity_types: [cover]
+    model_key: tf61j
+    command_eep: A5-3F-7F
+    status_eep: [A5-3F-7F]
+    verification: manual
+
+  # ---- Timers / misc actuators (GAPS: not yet in MAPPING) ------------------------------
+  ftn14:
+    manufacturer: Eltako
+    name: FTN14 (staircase off-delay timer)
+    series: "14"
+    category: switch
+    entity_types: [switch]
+    model_key: ftn14
+    command_eep: A5-38-08
+    status_eep: [F6-02-01]
+    verification: manual
+  fmz14:
+    manufacturer: Eltako
+    name: FMZ14 (multifunction timer, 10 channels)
+    series: "14"
+    category: switch
+    entity_types: [switch]
+    model_key: fmz14
+    command_eep: A5-38-08
+    status_eep: [F6-02-01]
+    verification: manual
+
+  # ---- Inputs / gateways -------------------------------------------------------------------
+  fts14em:
+    manufacturer: Eltako
+    name: FTS14EM (10-input module)
+    series: "14"
+    category: input
+    entity_types: [binary_sensor]
+    eep: D5-00-01
+    verification: manual
+  fwg14ms:
+    manufacturer: Eltako
+    name: FWG14MS (weather data gateway)
+    series: "14"
+    category: sensor
+    entity_types: [sensor]
+    eep: A5-13-01
+    verification: verified
+
+  # ---- Hand transmitters / sensors ---------------------------------------------------------
+  fhd60sb:
+    manufacturer: Eltako
+    name: FHD60SB (hand transmitter)
+    series: "60"
+    category: sensor
+    entity_types: [sensor]
+    model_key: fhd60sb
+    verification: manual
+
+  # ---- Standard EEP sensors (declared by rorg/func/type, not the model catalog) ------------
+  rocker_f6_02_01:
+    manufacturer: EnOcean/Eltako
+    name: Wall rocker switch (FT55, F4T55, ...)
+    category: sensor
+    entity_types: [binary_sensor, sensor]
+    eep: F6-02-01
+    verification: verified
+  room_panel_a5_10_03:
+    manufacturer: EnOcean/Eltako
+    name: Room operating panel (temperature + setpoint)
+    category: sensor
+    entity_types: [sensor]
+    eep: A5-10-03
+    verification: verified
+  heating_a5_10_06:
+    manufacturer: Eltako
+    name: F4HK14 floor heating / room panel (temp + setpoint + day/night)
+    category: sensor
+    entity_types: [sensor]
+    eep: A5-10-06
+    verification: verified
+  contact_d5_00_01:
+    manufacturer: EnOcean/Eltako
+    name: Window/door contact (FTKE, FFTE, ...)
+    category: sensor
+    entity_types: [binary_sensor]
+    eep: D5-00-01
+    verification: generic
+  temphum_a5_04_02:
+    manufacturer: Eltako
+    name: Temperature + humidity sensor (FTFB, FAFT60, ...)
+    category: sensor
+    entity_types: [sensor]
+    eep: A5-04-02
+    verification: manual
+  # ---- Known gaps to fill (documented, not yet mapped) -------------------------------------
+  co2_a5_09_0c:
+    manufacturer: EnOcean/Eltako
+    name: Air quality (CO2 + temperature + humidity)
+    category: sensor
+    entity_types: [sensor]
+    eep: A5-09-0C
+    verification: manual
+  windoor_a5_14_09:
+    manufacturer: EnOcean
+    name: Window/door sensor with vibration/handle
+    category: sensor
+    entity_types: [binary_sensor]
+    eep: A5-14-09
+    verification: manual

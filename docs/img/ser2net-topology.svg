@@ -1,0 +1,53 @@
+<svg width="1200" height="380" viewBox="0 0 1200 380" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#16233d" flood-opacity="0.16"/>
+    </filter>
+    <marker id="arw" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8.5" markerHeight="8.5" orient="auto-start-reverse">
+      <path d="M1,1 L11,6 L1,11 z" fill="#7d8daa"/>
+    </marker>
+    <style>
+      text { font-family: 'Helvetica Neue', Arial, sans-serif; fill: #14233d; }
+      .title { font-size: 18px; font-weight: 600; }
+      .sub   { font-size: 13px; fill: #5a6b84; }
+      .plabel{ font-size: 14px; font-weight: 600; fill: #4a5e7d; letter-spacing: .3px; }
+      .elabel{ font-size: 13.5px; fill: #3a4a66; }
+      .card  { stroke-width: 2; filter: url(#sh); }
+      .hw    { fill: #fff1e0; stroke: #e08a3c; }
+      .svc   { fill: #e4f5ec; stroke: #3e9d6a; }
+      .core  { fill: #eaf2fe; stroke: #3b7de0; }
+      .panel { fill: #f4f8fd; stroke: #d6e1f0; stroke-width: 1.5; }
+      .link  { stroke: #7d8daa; stroke-width: 2; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="380" fill="#ffffff"/>
+
+  <!-- Raspberry Pi panel -->
+  <rect class="panel" x="40" y="64" width="520" height="256" rx="18"/>
+  <text class="plabel" x="62" y="98">Raspberry Pi · RF frontend</text>
+
+  <rect class="card hw"  x="72"  y="150" width="196" height="112" rx="14"/>
+  <text class="title" x="170" y="200" text-anchor="middle">EnOcean USB stick</text>
+  <text class="sub"   x="170" y="224" text-anchor="middle">/dev/serial/by-id/…</text>
+
+  <rect class="card svc" x="348" y="150" width="196" height="112" rx="14"/>
+  <text class="title" x="446" y="200" text-anchor="middle">ser2net</text>
+  <text class="sub"   x="446" y="224" text-anchor="middle">raw TCP :3000</text>
+
+  <line class="link" x1="268" y1="206" x2="344" y2="206" marker-end="url(#arw)"/>
+  <text class="elabel" x="306" y="138" text-anchor="middle">57600 8N1</text>
+
+  <!-- Home Assistant panel -->
+  <rect class="panel" x="680" y="64" width="480" height="256" rx="18"/>
+  <text class="plabel" x="702" y="98">Home Assistant host</text>
+
+  <rect class="card core" x="744" y="150" width="352" height="112" rx="14"/>
+  <text class="title" x="920" y="200" text-anchor="middle">enocean2mqtt add-on</text>
+  <text class="sub"   x="920" y="224" text-anchor="middle">connection: pi:3000</text>
+
+  <!-- cross-network link -->
+  <line class="link" x1="544" y1="212" x2="744" y2="212" marker-start="url(#arw)" marker-end="url(#arw)"/>
+  <text class="elabel" x="644" y="180" text-anchor="middle">raw TCP (socket://)</text>
+  <text class="elabel" x="644" y="199" text-anchor="middle">LAN / VPN only</text>
+</svg>

@@ -1,0 +1,19 @@
+%YAML 1.1
+---
+# ser2net config: expose the EnOcean USB stick as a RAW TCP port for the HA add-on.
+#
+# IMPORTANT: the accepter is raw `tcp` (NOT `telnet`) — telnet would 0xFF-escape the byte
+# stream and corrupt ESP3 frames. 57600 8N1 matches USB300 / FAM-USB / FT232R.
+#
+# The connector path below is substituted by pi/install.sh with the stick's stable by-id path
+# (e.g. /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_XXXXXXXX-if00-port0). You can also edit this
+# file directly and drop it in as /etc/ser2net.yaml. Point the add-on's `connection` at <pi>:3000.
+#
+# This is the ser2net v4 format. On older ser2net v3 (e.g. Debian Buster) install.sh detects the
+# version and writes the legacy `/etc/ser2net.conf` line instead — you don't choose the format.
+connection: &enocean
+  accepter: tcp,3000
+  connector: serialdev,__ENOCEAN_DEVICE__,57600n81,local
+  options:
+    kickolduser: true
+    max-connections: 1

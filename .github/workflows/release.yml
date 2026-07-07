@@ -1,0 +1,78 @@
+name: Release
+
+# Cut a release by tagging v<x.y.z> (matching addon/config.yaml `version`) and publishing a GitHub
+# Release. This builds the add-on image per arch on native runners, pushes to GHCR, and attaches a
+# signed build-provenance attestation. Auth uses the built-in GITHUB_TOKEN — no secrets to configure.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match addon/config.yaml version
+        id: v
+        run: |
+          version="$(grep -E '^version:' addon/config.yaml | sed -E 's/^version:[[:space:]]*"?([^"]+)"?/\1/')"
+          tag="${GITHUB_REF_NAME#v}"
+          echo "config.yaml version=${version}  tag=${tag}"
+          if [ "${version}" != "${tag}" ]; then
+            echo "::error::release tag v${tag} does not match addon/config.yaml version ${version}"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: guard
+    # Each arch builds on its own native runner (aarch64 = free public arm64 runner) — no QEMU.
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write      # push to GHCR
+      id-token: write      # keyless signing (OIDC)
+      attestations: write  # build-provenance attestation
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            base: ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.24
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            base: ghcr.io/home-assistant/aarch64-base-python:3.12-alpine3.24
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push (${{ matrix.arch }})
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: addon/Dockerfile
+          build-args: BUILD_FROM=${{ matrix.base }}
+          push: true
+          # HA substitutes {arch} in config.yaml `image:` → per-arch repos, each a single-arch image.
+          tags: |
+            ghcr.io/t-ice/${{ matrix.arch }}-enocean-mqtt-ha:${{ needs.guard.outputs.version }}
+            ghcr.io/t-ice/${{ matrix.arch }}-enocean-mqtt-ha:latest
+      - name: Attest build provenance (${{ matrix.arch }})
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/t-ice/${{ matrix.arch }}-enocean-mqtt-ha
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

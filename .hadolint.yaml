@@ -1,0 +1,13 @@
+# hadolint config for addon/Dockerfile (and the staged dist/addon/Dockerfile).
+# See https://github.com/hadolint/hadolint
+failure-threshold: warning
+
+ignored:
+  # BUILD_FROM is provided by the HA Supervisor build; it has no default tag on purpose.
+  - DL3006
+  # `apk add python3` intentionally tracks the pinned HA base image's repo; the base tag is the pin.
+  - DL3018
+
+trustedRegistries:
+  - ghcr.io
+  - docker.io

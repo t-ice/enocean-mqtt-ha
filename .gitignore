@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local scratch
+*.log
+.lib_sha.tmp
+
+# Generated device store (a test/run building SqliteDeviceStore without an explicit db_file)
+*.sqlite
+src/enocean2mqtt/adapters/store/device_db.sqlite

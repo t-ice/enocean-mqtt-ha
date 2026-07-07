@@ -1,0 +1,54 @@
+<svg width="960" height="540" viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#16233d" flood-opacity="0.16"/>
+    </filter>
+    <marker id="arw" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M1,1 L11,6 L1,11 z" fill="#7d8daa"/>
+    </marker>
+    <style>
+      text { font-family: 'Helvetica Neue', Arial, sans-serif; fill: #14233d; }
+      .state { font-size: 22px; font-weight: 700; }
+      .elabel{ font-size: 14px; fill: #3a4a66; }
+      .note  { font-size: 14px; fill: #6b5417; }
+      .card  { stroke-width: 2.5; filter: url(#sh); }
+      .idle  { fill: #eaf2fe; stroke: #3b7de0; }
+      .learn { fill: #fff1e0; stroke: #e08a3c; }
+      .notec { fill: #fff8e1; stroke: #e4c560; stroke-width: 2; filter: url(#sh); }
+      .link  { stroke: #7d8daa; stroke-width: 2; fill: none; }
+      .dash  { stroke: #b0a06a; stroke-width: 1.6; stroke-dasharray: 5 4; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="960" height="540" fill="#ffffff"/>
+
+  <!-- start -->
+  <circle cx="480" cy="36" r="9" fill="#43506b"/>
+  <line class="link" x1="480" y1="45" x2="480" y2="80" marker-end="url(#arw)"/>
+
+  <!-- states -->
+  <rect class="card idle"  x="380" y="82"  width="200" height="86" rx="20"/>
+  <text class="state" x="480" y="134" text-anchor="middle">Idle</text>
+
+  <rect class="card learn" x="380" y="300" width="200" height="86" rx="20"/>
+  <text class="state" x="480" y="352" text-anchor="middle">Learning</text>
+
+  <!-- Idle -> Learning (left) -->
+  <line class="link" x1="440" y1="168" x2="440" y2="300" marker-end="url(#arw)"/>
+  <text class="elabel" x="424" y="238" text-anchor="end">LEARN switch ON</text>
+
+  <!-- Learning -> Idle (right) -->
+  <line class="link" x1="520" y1="300" x2="520" y2="168" marker-end="url(#arw)"/>
+  <text class="elabel" x="538" y="222" text-anchor="start">LEARN switch OFF</text>
+  <text class="elabel" x="538" y="252" text-anchor="start">5-min auto-timeout</text>
+
+  <!-- self-loop on Learning (bottom) -->
+  <path class="link" d="M448,386 C 430,452 550,452 532,386" marker-end="url(#arw)"/>
+  <text class="elabel" x="480" y="486" text-anchor="middle">pairing button → send a learn telegram from the sender</text>
+
+  <!-- note attached to Learning -->
+  <rect class="notec" x="60" y="298" width="252" height="90" rx="14"/>
+  <text class="note" x="186" y="336" text-anchor="middle">Only accepts / emits teach-in</text>
+  <text class="note" x="186" y="358" text-anchor="middle">telegrams while in this state</text>
+  <path class="dash" d="M312,343 L380,343"/>
+</svg>

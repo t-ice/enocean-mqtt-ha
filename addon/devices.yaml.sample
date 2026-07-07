@@ -1,0 +1,24 @@
+# Sample devices.yaml (the device list format; the legacy INI .devices format is no longer supported).
+# A device needs only: name + address + (eep | model). rorg/func/type, command encodings and
+# entity types are resolved from the EEP string / the Eltako catalog.
+devices:
+  # --- EEP-based sensors -------------------------------------------------------------------
+  - name: Wetterstation
+    address: 0x059ED79A
+    eep: A5-13-01
+
+  - name: Schalter_OG_Bad_1
+    address: 0xFEE25DBA
+    eep: F6-02-01
+
+  # --- Eltako model actuators (need a unique sender = base_id + offset) ---------------------
+  - name: Rollo_Wohnzimmer
+    address: 0xFF94CE9C
+    model: eltako/FSB14
+    sender: 0xFFAE7C81
+    shut_time: 64          # full open/close travel time in seconds
+
+  - name: Licht_Kueche
+    address: 0xFF94CEA0
+    model: eltako/FSR14
+    sender: 0xFFAE7C90

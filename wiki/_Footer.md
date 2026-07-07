@@ -1,0 +1,1 @@
+**EnOcean MQTT for Home Assistant** — bridges the whole EnOcean EEP range to MQTT, with first-class Eltako support · [Repository](https://github.com/t-ice/enocean-mqtt-ha) · [Report an issue](https://github.com/t-ice/enocean-mqtt-ha/issues)

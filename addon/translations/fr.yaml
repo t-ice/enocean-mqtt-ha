@@ -1,0 +1,70 @@
+configuration:
+  device:
+    name: Périphérique EnOcean
+    description: >-
+      Chemin série de la clé USB EnOcean locale (p. ex. /dev/ttyUSB0) — l'add-on liste les
+      périphériques série disponibles dans son journal de démarrage ; démarrez-le une fois et copiez
+      ici le bon chemin. Pour une clé branchée sur la machine Home Assistant. Laissez vide si un point
+      TCP (ser2net) est défini ci-dessous ; si les deux sont définis, TCP l'emporte.
+  tcp:
+    name: ser2net (TCP)
+    description: >-
+      Transceiver distant via ser2net, sous la forme host:port (par ex. 192.168.10.31:3000) — pour une
+      clé sur un Raspberry Pi. Connecté nativement (pas de socat). Si les deux sont définis, le TCP l'emporte.
+  device_file:
+    name: Fichier des appareils
+    description: >-
+      Chemin vers votre liste devices.yaml. Par défaut /config/enocean2mqtt/devices.yaml.
+  log_file:
+    name: Fichier journal
+    description: Chemin du fichier journal du démon.
+  log_level:
+    name: Niveau de journalisation
+    description: >-
+      Quantité à journaliser : error, warning, info (par défaut) ou debug. Choisissez debug pour
+      journaliser chaque télégramme brut — pratique pour trouver l'adresse d'un appareil.
+  send_interval_ms:
+    name: Intervalle d'envoi (ms)
+    description: >-
+      Délai minimal en millisecondes entre les télégrammes émis, afin que les rafales de commandes
+      (par ex. « fermer tous les volets ») ne soient pas perdues. Par défaut 100 (≈ le temps de
+      maturité RX EnOcean) ; 0 le désactive.
+  repeater:
+    name: Répéteur
+    description: >-
+      Réémet les télégrammes pour plus de portée : désactivé (par défaut) ou niveau 1/2. Appliqué au
+      transceiver au démarrage ; le niveau actif apparaît comme capteur de diagnostic.
+  secure_psk:
+    name: PSK de teach-in sécurisé (avancé)
+    description: >-
+      Clé pré-partagée (32 hex) pour déchiffrer les teach-ins sécurisés protégés par PSK. La plupart
+      envoient la clé en clair ; laisse vide sauf si un appareil exige un PSK.
+  mqtt_host:
+    name: Hôte MQTT (avancé)
+    description: >-
+      Hôte du broker explicite. Laisser vide pour utiliser automatiquement le service « mqtt » du
+      Superviseur.
+  mqtt_port:
+    name: Port MQTT (avancé)
+    description: Port du broker explicite (par défaut 1883).
+  mqtt_user:
+    name: Utilisateur MQTT (avancé)
+    description: Nom d'utilisateur du broker explicite.
+  mqtt_pwd:
+    name: Mot de passe MQTT (avancé)
+    description: Mot de passe du broker explicite.
+  mqtt_ssl:
+    name: TLS MQTT
+    description: Activer le TLS vers le broker MQTT.
+  mqtt_ssl_ca_certs:
+    name: Certificat CA TLS
+    description: Chemin vers le certificat CA (PEM), par ex. sous /ssl ou /config.
+  mqtt_ssl_certfile:
+    name: Certificat client TLS
+    description: Chemin vers le certificat client (PEM), pour le TLS mutuel.
+  mqtt_ssl_keyfile:
+    name: Clé client TLS
+    description: Chemin vers la clé privée du client (PEM), pour le TLS mutuel.
+  mqtt_ssl_insecure:
+    name: Ignorer la vérification TLS
+    description: Ne pas vérifier le certificat du broker (tests uniquement — non sécurisé).

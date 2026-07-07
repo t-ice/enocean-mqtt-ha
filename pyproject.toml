@@ -1,0 +1,152 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "enocean-mqtt-ha"
+# Python package version — intentionally decoupled from the shipped add-on version, which lives in
+# addon/config.yaml (and drives the GHCR image tags). This package is not published to PyPI.
+version = "0.1.0"
+description = "EnOcean to MQTT bridge for Home Assistant (whole EEP range; first-class Eltako support)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Christian Theis" }]
+keywords = ["enocean", "eltako", "mqtt", "homeassistant", "home-assistant"]
+
+# Runtime dependencies.
+#  - The I/O core is asyncio (0.3.0): aiomqtt (async MQTT, wraps paho v2) + pyserial-asyncio
+#    (async serial); ser2net TCP is handled with asyncio streams directly.
+#  - the position/discovery store is stdlib sqlite3 now (TinyDB dropped in Phase 3).
+#  - EEP decode/encode is the code-defined engine (protocol/profiles), a hand-maintained source
+#    (the runtime EEP.xml parser was retired in 0.6.0; the code-gen tooling + XML in 0.9.2).
+dependencies = [
+    "aiomqtt>=2.3,<3",
+    "pyyaml>=6,<7",
+    "pyserial>=3.5,<4",
+    "pyserial-asyncio>=0.6",
+    # ruamel.yaml is round-trip: learn-mode auto-provisioning appends taught-in devices to the user's
+    # devices.yaml while preserving its comments/formatting (pyyaml can't round-trip comments).
+    "ruamel.yaml>=0.18,<0.19",
+    # cryptography provides AES-128-ECB (the VAES keystream primitive) + AES-CMAC (RFC 4493) for
+    # EnOcean secure telegrams (P5). musllinux wheels exist for the add-on's arches.
+    "cryptography>=42,<46",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML",
+    "pre-commit>=3.5",
+    "yamllint>=1.35",
+    "vulture>=2.11",
+]
+
+[project.scripts]
+# The HA add-on run.sh invokes `enocean2mqtt`.
+enocean2mqtt = "enocean2mqtt.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/t-ice/enocean-mqtt-ha"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/enocean2mqtt"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+[tool.ruff]
+src = ["src"]
+target-version = "py312"
+line-length = 100
+# Hand-maintained data files (long dict literals; excluded from lint/format).
+extend-exclude = [
+    "src/enocean2mqtt/protocol/profiles/eep",
+    "src/enocean2mqtt/homeassistant/mapping/eep",
+    "src/enocean2mqtt/homeassistant/mapping/_catalog.py",
+]
+
+[tool.ruff.format]
+# The formatter is the single source of truth for layout — see STYLEGUIDE.md.
+docstring-code-format = true
+
+[tool.ruff.lint]
+# pycodestyle(E,W) · pyflakes(F) · isort(I) · pyupgrade(UP) · flake8-bugbear(B) ·
+# flake8-comprehensions(C4) · flake8-simplify(SIM) · pep8-naming(N) · Ruff-native(RUF).
+select = ["E", "F", "I", "UP", "B", "W", "C4", "SIM", "N", "RUF"]
+ignore = [
+    # Comments/docstrings intentionally use "→" and German umlauts (ä/ö/ü); not typos.
+    "RUF001", "RUF002", "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Short-lived test/generator scripts: a bare open() for a one-shot read is fine (the process exits
+# and reclaims the fd). SIM115 (context-manager) is enforced in the long-running daemon (src/).
+"tests/**/*.py" = ["SIM115"]
+"tools/**/*.py" = ["SIM115"]
+# Protocol conformance tests: their wide ESP3 byte-array and assertion literals are kept 1:1
+# (reflowing risks transcription errors in these spec-derived fixtures).
+# UP031: one assertion mirrors a %-format __str__ output — kept identical on purpose.
+# N806: upper-case byte-array fixtures (TEMPERATURE, MAGNETIC_SWITCH …) are idiomatic test data.
+"tests/protocol/conformance/*.py" = ["E501", "UP031", "N806"]
+# ESP3/EEP spec constant groups are SCREAMING_CASE enums by convention (mirror the C-style spec
+# tables); renaming them to CapWords would obscure the mapping to the specification.
+"src/enocean2mqtt/protocol/constants.py" = ["N801"]
+# packet.py: `dBm` is the EnOcean signal-strength field name (a domain term), kept verbatim.
+"src/enocean2mqtt/protocol/packet.py" = ["N815"]
+
+[tool.vulture]
+# On-demand dead-code check:  uv run vulture
+# High confidence only in automation — the ports Protocols, the Sensor value-object accessors and the
+# ESP3/EEP spec-constant surface legitimately read as "unused" to static analysis (they are an
+# interface/reference surface). For a deeper pass, review `vulture --min-confidence 60` by hand.
+paths = ["src/enocean2mqtt"]
+min_confidence = 80
+exclude = ["*/profiles/eep/*.py", "*/mapping/eep/*.py", "_catalog.py"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/enocean2mqtt"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+exclude = [
+    "src/enocean2mqtt/protocol/profiles/eep/",
+    "src/enocean2mqtt/homeassistant/mapping/eep/",
+    "src/enocean2mqtt/homeassistant/mapping/_catalog\\.py",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]  # "." so tests can import the tools/ scripts
+asyncio_mode = "auto"      # async test functions run without an explicit marker
+# Plain `pytest` runs the fast unit/component tier only. Run the container tiers explicitly:
+#   pytest -m integration   (podman: mosquitto + ser2net/ESP3 emulator + the real add-on image)
+#   pytest -m ha            (the above + a full Home Assistant container; slow)
+addopts = "-m 'not integration and not ha'"
+markers = [
+    "integration: container-based end-to-end tests (needs podman)",
+    "ha: full Home Assistant container tier (slow; needs podman)",
+]
+filterwarnings = [
+    # the folded protocol lib uses the deprecated logging.warn() in a couple of spots.
+    "ignore:.*'warn' method is deprecated.*:DeprecationWarning",
+]
+
+# Coverage is enforced only when run with --cov (so `pytest -k …` sub-runs don't fail):
+#   pytest --cov=src/enocean2mqtt --cov-report=term-missing
+[tool.coverage.run]
+source = ["src/enocean2mqtt"]
+omit = [
+    "*/profiles/eep/*.py",
+    "*/mapping/eep/*.py",
+    "*/mapping/_catalog.py",
+]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+exclude_also = ["if __name__ == .__main__.:", "raise NotImplementedError", "\\.\\.\\."]

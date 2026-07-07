@@ -1,0 +1,58 @@
+# Pre-commit hooks enforcing the project styleguide (see STYLEGUIDE.md).
+#   pip install pre-commit && pre-commit install
+#   pre-commit run --all-files
+minimum_pre_commit_version: "3.5.0"
+repos:
+  # Python lint + format — single source of truth; config in pyproject.toml.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Static types — run in the project env so our exact mypy version, config and stubs apply.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        pass_filenames: false
+        types: [python]
+
+  # YAML: Home Assistant add-on config, translations, CI.
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        # line-length is a warning (HA descriptions run long); real YAML errors still fail.
+        args: [-c, .yamllint]
+
+  # Dockerfile hygiene (config in .hadolint.yaml).
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.13.1-beta
+    hooks:
+      - id: hadolint
+        files: (^|/)Dockerfile$
+
+  # Shell scripts: addon/run.sh and any tools/*.sh.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: check-yaml
+        exclude: ^addon/(config|build)\.yaml$  # HA add-on schema uses custom !include-like tags
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-added-large-files
+        args: [--maxkb=512]

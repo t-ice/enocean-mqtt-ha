@@ -1,0 +1,69 @@
+configuration:
+  device:
+    name: EnOcean-apparaat
+    description: >-
+      Serieel pad van de lokale EnOcean-USB-stick (bijv. /dev/ttyUSB0) — de add-on toont de
+      beschikbare seriële apparaten in het opstartlog; start hem één keer en kopieer hier het juiste
+      pad. Voor een stick in de Home Assistant-machine. Laat leeg als hieronder een TCP
+      (ser2net)-eindpunt is ingesteld; als beide zijn ingesteld, wint TCP.
+  tcp:
+    name: ser2net (TCP)
+    description: >-
+      Externe transceiver via ser2net, als host:port (bijv. 192.168.10.31:3000) — voor een stick op
+      een Raspberry Pi. Native verbonden (geen socat). Als beide zijn ingesteld, wint TCP.
+  device_file:
+    name: Apparatenbestand
+    description: >-
+      Pad naar je devices.yaml-lijst. Standaard /config/enocean2mqtt/devices.yaml.
+  log_file:
+    name: Logbestand
+    description: Pad van het logbestand van de daemon.
+  log_level:
+    name: Logniveau
+    description: >-
+      Hoeveel er wordt gelogd: error, warning, info (standaard) of debug. Kies debug om elk ruw
+      telegram te loggen — handig om het adres van een apparaat te vinden.
+  send_interval_ms:
+    name: Verzendinterval (ms)
+    description: >-
+      Minimale tijd in milliseconden tussen verzonden telegrammen, zodat reeksen commando's (bijv.
+      "alle rolluiken sluiten") niet verloren gaan. Standaard 100 (≈ de EnOcean RX-rijptijd);
+      0 schakelt het uit.
+  repeater:
+    name: Repeater
+    description: >-
+      Zendt telegrammen opnieuw uit voor meer bereik: uit (standaard) of niveau 1/2. Wordt bij het
+      starten op de transceiver toegepast; het actieve niveau verschijnt als diagnosesensor.
+  secure_psk:
+    name: PSK voor beveiligde teach-in (geavanceerd)
+    description: >-
+      Vooraf gedeelde sleutel (32 hex) om PSK-beveiligde teach-ins te ontsleutelen. De meeste sturen
+      de sleutel onversleuteld; laat leeg tenzij een apparaat een PSK vereist.
+  mqtt_host:
+    name: MQTT-host (geavanceerd)
+    description: >-
+      Expliciete broker-host. Laat leeg om automatisch de Supervisor-service 'mqtt' te gebruiken.
+  mqtt_port:
+    name: MQTT-poort (geavanceerd)
+    description: Expliciete broker-poort (standaard 1883).
+  mqtt_user:
+    name: MQTT-gebruiker (geavanceerd)
+    description: Expliciete broker-gebruikersnaam.
+  mqtt_pwd:
+    name: MQTT-wachtwoord (geavanceerd)
+    description: Expliciet broker-wachtwoord.
+  mqtt_ssl:
+    name: MQTT-TLS
+    description: TLS naar de MQTT-broker inschakelen.
+  mqtt_ssl_ca_certs:
+    name: TLS-CA-certificaat
+    description: Pad naar het CA-certificaat (PEM), bijv. onder /ssl of /config.
+  mqtt_ssl_certfile:
+    name: TLS-clientcertificaat
+    description: Pad naar het clientcertificaat (PEM), voor wederzijdse TLS.
+  mqtt_ssl_keyfile:
+    name: TLS-clientsleutel
+    description: Pad naar de private clientsleutel (PEM), voor wederzijdse TLS.
+  mqtt_ssl_insecure:
+    name: TLS-verificatie overslaan
+    description: Het broker-certificaat niet verifiëren (alleen testen — onveilig).

@@ -1,0 +1,70 @@
+configuration:
+  device:
+    name: Dispositivo EnOcean
+    description: >-
+      Ruta serie de la memoria USB EnOcean local (p. ej. /dev/ttyUSB0) — el complemento lista los
+      dispositivos serie disponibles en su registro de inicio; arráncalo una vez y copia aquí la ruta
+      correcta. Para una memoria conectada a la máquina de Home Assistant. Déjalo vacío si usas un punto
+      TCP (ser2net) abajo; si defines ambos, gana TCP.
+  tcp:
+    name: ser2net (TCP)
+    description: >-
+      Transceptor remoto vía ser2net, como host:port (p. ej. 192.168.10.31:3000) — para una memoria
+      en una Raspberry Pi. Conexión nativa (sin socat). Si defines ambos, gana el TCP.
+  device_file:
+    name: Archivo de dispositivos
+    description: >-
+      Ruta a tu lista devices.yaml. Por defecto /config/enocean2mqtt/devices.yaml.
+  log_file:
+    name: Archivo de registro
+    description: Ruta del archivo de registro del demonio.
+  log_level:
+    name: Nivel de registro
+    description: >-
+      Cuánto registrar: error, warning, info (por defecto) o debug. Elige debug para registrar
+      cada telegrama en bruto — útil para encontrar la dirección de un dispositivo.
+  send_interval_ms:
+    name: Intervalo de envío (ms)
+    description: >-
+      Milisegundos mínimos entre telegramas enviados para que las ráfagas de órdenes (p. ej.
+      «cerrar todas las persianas») no se pierdan. Por defecto 100 (≈ el tiempo de madurez RX de
+      EnOcean); 0 lo desactiva.
+  repeater:
+    name: Repetidor
+    description: >-
+      Retransmite telegramas para más alcance: apagado (por defecto) o nivel 1/2. Se aplica al
+      transceptor al iniciar; el nivel activo aparece como sensor de diagnóstico.
+  secure_psk:
+    name: PSK de teach-in seguro (avanzado)
+    description: >-
+      Clave precompartida (32 hex) para descifrar teach-ins seguros protegidos con PSK. La mayoría
+      envían la clave en claro; déjalo vacío salvo que un dispositivo requiera PSK.
+  mqtt_host:
+    name: Host MQTT (avanzado)
+    description: >-
+      Host del broker explícito. Déjalo vacío para usar automáticamente el servicio «mqtt» del
+      Supervisor.
+  mqtt_port:
+    name: Puerto MQTT (avanzado)
+    description: Puerto del broker explícito (por defecto 1883).
+  mqtt_user:
+    name: Usuario MQTT (avanzado)
+    description: Nombre de usuario del broker explícito.
+  mqtt_pwd:
+    name: Contraseña MQTT (avanzado)
+    description: Contraseña del broker explícita.
+  mqtt_ssl:
+    name: TLS MQTT
+    description: Habilitar TLS hacia el broker MQTT.
+  mqtt_ssl_ca_certs:
+    name: Certificado CA de TLS
+    description: Ruta al certificado CA (PEM), p. ej. en /ssl o /config.
+  mqtt_ssl_certfile:
+    name: Certificado de cliente TLS
+    description: Ruta al certificado de cliente (PEM), para TLS mutuo.
+  mqtt_ssl_keyfile:
+    name: Clave de cliente TLS
+    description: Ruta a la clave privada del cliente (PEM), para TLS mutuo.
+  mqtt_ssl_insecure:
+    name: Omitir verificación TLS
+    description: No verificar el certificado del broker (solo para pruebas — inseguro).

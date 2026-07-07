@@ -1,0 +1,68 @@
+name: Bug report
+description: Something isn't working (won't start, no feedback, wrong values, crashes)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Please fill in as much as you can — logs and the exact device make
+        this far quicker to fix. Check the
+        [Troubleshooting guide](https://github.com/t-ice/enocean-mqtt-ha/wiki/Troubleshooting)
+        first; many issues (e.g. "Data CRC error") have a known cause.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the steps to reproduce it.
+    validations:
+      required: true
+  - type: input
+    id: addon-version
+    attributes:
+      label: Add-on version
+      placeholder: "e.g. 0.14.0"
+    validations:
+      required: true
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      placeholder: "e.g. 2026.6.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: transceiver
+    attributes:
+      label: Transceiver setup
+      options:
+        - Local USB stick (/dev/ttyUSB… or /dev/ttyACM…)
+        - Remote ser2net over TCP (host:port)
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Affected device
+      description: EnOcean EEP (RORG-FUNC-TYPE) or Eltako model, if known.
+      placeholder: "e.g. eltako/fsb14, or A5-13-01"
+  - type: textarea
+    id: devices-yaml
+    attributes:
+      label: The devices.yaml entry
+      render: yaml
+      placeholder: |
+        - name: Rollo_Wohnzimmer
+          address: 0xFF94CE9C
+          model: eltako/fsb14
+          sender: 0xFFAE7C81
+          shut_time: 64
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Set `debug: true` (and `log_packets: true` for a decode problem), reproduce, and paste the
+        relevant lines — including any raw telegram. This is rendered as a code block.
+      render: shell
+    validations:
+      required: true

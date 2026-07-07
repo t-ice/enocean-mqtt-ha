@@ -1,0 +1,26 @@
+{
+  "direction": "received",
+  "sender": "FE:E4:92:45",
+  "destination": "FF:FF:FF:FF",
+  "dbm": -80,
+  "packet_type": 1,
+  "data": [
+    246,
+    0,
+    254,
+    228,
+    146,
+    69,
+    32
+  ],
+  "optional": [
+    0,
+    255,
+    255,
+    255,
+    255,
+    80,
+    0
+  ],
+  "rorg": 246
+}

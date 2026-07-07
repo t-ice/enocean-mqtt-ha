@@ -1,0 +1,76 @@
+<svg width="1060" height="940" viewBox="0 0 1060 940" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#16233d" flood-opacity="0.16"/>
+    </filter>
+    <marker id="arw" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M1,1 L11,6 L1,11 z" fill="#7d8daa"/>
+    </marker>
+    <style>
+      text { font-family: 'Helvetica Neue', Arial, sans-serif; fill: #14233d; }
+      .n     { font-size: 16px; }
+      .nb    { font-size: 16px; font-weight: 600; }
+      .edge  { font-size: 14px; font-weight: 600; fill: #46536e; }
+      .card  { stroke-width: 2; filter: url(#sh); }
+      .start { fill: #fde6e6; stroke: #d9534f; }
+      .action{ fill: #eaf2fe; stroke: #3b7de0; }
+      .ok    { fill: #e4f5ec; stroke: #3e9d6a; }
+      .dia   { fill: #fff6de; stroke: #e4b04a; stroke-width: 2; filter: url(#sh); }
+      .link  { stroke: #7d8daa; stroke-width: 2; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1060" height="940" fill="#ffffff"/>
+
+  <!-- A: start / symptom -->
+  <rect class="card start" x="190" y="36" width="380" height="86" rx="14"/>
+  <text class="nb" x="380" y="72"  text-anchor="middle">Continuous “Data CRC error” /</text>
+  <text class="nb" x="380" y="96"  text-anchor="middle">no actuator feedback</text>
+  <line class="link" x1="380" y1="122" x2="380" y2="168" marker-end="url(#arw)"/>
+
+  <!-- B: decision 1 -->
+  <polygon class="dia" points="380,168 560,258 380,348 200,258"/>
+  <text class="n" x="380" y="252" text-anchor="middle">HA built-in “enocean”</text>
+  <text class="n" x="380" y="274" text-anchor="middle">integration installed?</text>
+  <!-- B yes -> C -->
+  <line class="link" x1="560" y1="258" x2="700" y2="258" marker-end="url(#arw)"/>
+  <text class="edge" x="612" y="246" text-anchor="middle">Yes</text>
+  <rect class="card action" x="700" y="214" width="330" height="88" rx="14"/>
+  <text class="n" x="865" y="250" text-anchor="middle">Remove it — it fights the</text>
+  <text class="n" x="865" y="272" text-anchor="middle">add-on for the USB stick</text>
+  <!-- B no -> D -->
+  <line class="link" x1="380" y1="348" x2="380" y2="398" marker-end="url(#arw)"/>
+  <text class="edge" x="398" y="378" text-anchor="start">No</text>
+
+  <!-- D: decision 2 -->
+  <polygon class="dia" points="380,398 560,488 380,578 200,488"/>
+  <text class="n" x="380" y="482" text-anchor="middle">Another add-on / process</text>
+  <text class="n" x="380" y="504" text-anchor="middle">on the same serial device?</text>
+  <!-- D yes -> E -->
+  <line class="link" x1="560" y1="488" x2="700" y2="488" marker-end="url(#arw)"/>
+  <text class="edge" x="612" y="476" text-anchor="middle">Yes</text>
+  <rect class="card action" x="700" y="440" width="330" height="96" rx="14"/>
+  <text class="n" x="865" y="476" text-anchor="middle">Stop it, or move the stick to</text>
+  <text class="n" x="865" y="498" text-anchor="middle">a Pi + ser2net (host:3000)</text>
+  <!-- D no -> F -->
+  <line class="link" x1="380" y1="578" x2="380" y2="628" marker-end="url(#arw)"/>
+  <text class="edge" x="398" y="608" text-anchor="start">No</text>
+
+  <!-- F: decision 3 -->
+  <polygon class="dia" points="380,628 560,718 380,808 200,718"/>
+  <text class="n" x="380" y="712" text-anchor="middle">bridge/stats shows</text>
+  <text class="n" x="380" y="734" text-anchor="middle">telegrams arriving?</text>
+  <!-- F no -> G -->
+  <line class="link" x1="560" y1="718" x2="700" y2="718" marker-end="url(#arw)"/>
+  <text class="edge" x="612" y="706" text-anchor="middle">No</text>
+  <rect class="card action" x="700" y="670" width="330" height="96" rx="14"/>
+  <text class="n" x="865" y="706" text-anchor="middle">Check “connection” (device</text>
+  <text class="n" x="865" y="728" text-anchor="middle">path / ser2net host:port) + RF</text>
+  <!-- F yes -> H -->
+  <line class="link" x1="380" y1="808" x2="380" y2="858" marker-end="url(#arw)"/>
+  <text class="edge" x="398" y="840" text-anchor="start">Yes, occasional errors</text>
+
+  <!-- H: ok / terminal -->
+  <rect class="card ok" x="210" y="858" width="340" height="70" rx="14"/>
+  <text class="nb" x="380" y="900" text-anchor="middle">Harmless — the daemon resyncs</text>
+</svg>
