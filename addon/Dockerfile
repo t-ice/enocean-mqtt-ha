@@ -6,7 +6,7 @@
 #
 # The daemon is installed as a single wheel and connects to ser2net over TCP natively.
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.24
-FROM ghcr.io/astral-sh/uv:0.11.27 AS uv
+FROM ghcr.io/astral-sh/uv:0.11.28 AS uv
 FROM ${BUILD_FROM}
 
 LABEL org.opencontainers.image.title="EnOcean MQTT for Home Assistant" \
