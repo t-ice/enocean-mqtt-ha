@@ -27,7 +27,7 @@ dependencies = [
     "pyserial-asyncio>=0.6",
     # ruamel.yaml is round-trip: learn-mode auto-provisioning appends taught-in devices to the user's
     # devices.yaml while preserving its comments/formatting (pyyaml can't round-trip comments).
-    "ruamel.yaml>=0.18,<0.19",
+    "ruamel.yaml>=0.19.1,<0.20",
     # cryptography provides AES-128-ECB (the VAES keystream primitive) + AES-CMAC (RFC 4493) for
     # EnOcean secure telegrams (P5). musllinux wheels exist for the add-on's arches.
     "cryptography>=42,<46",
