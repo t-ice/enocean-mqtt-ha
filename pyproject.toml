@@ -30,7 +30,7 @@ dependencies = [
     "ruamel.yaml>=0.18,<0.19",
     # cryptography provides AES-128-ECB (the VAES keystream primitive) + AES-CMAC (RFC 4493) for
     # EnOcean secure telegrams (P5). musllinux wheels exist for the add-on's arches.
-    "cryptography>=42,<46",
+    "cryptography>=49.0.0,<50",
 ]
 
 [project.optional-dependencies]
