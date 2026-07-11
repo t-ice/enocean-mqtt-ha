@@ -1,4 +1,7 @@
 #!/usr/bin/env bats
+# The grep patterns below are intentionally single-quoted literals — we match the exact source text
+# of run.sh (e.g. '${CONNECTION}'), so $-expansion must NOT happen. Silence that info file-wide:
+# shellcheck disable=SC2016
 # Static checks on addon/run.sh. Run with: bats tests/addon/  (CI installs bats-core).
 # Behavioural config-generation is covered indirectly by the daemon tests; here we guard the
 # shell contract: valid syntax, the single `connection` option wired to enocean_port, and MQTT
@@ -39,7 +42,10 @@
 
 @test "daemon is exec'd directly (async core self-heals; no restart loop)" {
   # The asyncio daemon reconnects internally, so run.sh no longer loops or probes /dev/tcp.
-  ! grep -q 'while true; do' addon/run.sh
-  ! grep -q '/dev/tcp/' addon/run.sh
+  # Use `run` + explicit status check: a bare `! grep` does not fail a bats test (SC2314).
+  run grep -q 'while true; do' addon/run.sh
+  [ "$status" -ne 0 ]
+  run grep -q '/dev/tcp/' addon/run.sh
+  [ "$status" -ne 0 ]
   grep -q 'exec enocean2mqtt --log-level' addon/run.sh
 }

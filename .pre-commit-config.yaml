@@ -36,13 +36,11 @@ repos:
       - id: hadolint
         files: (^|/)Dockerfile$
 
-  # Shell scripts: addon/run.sh and any tools/*.sh. .bats tests are bats-dialect (run by `bats`, not
-  # plain shell) and are intentionally not shellchecked — matching the CI shell job.
+  # Shell scripts: addon/run.sh, tools/*.sh, and the .bats tests (shellcheck understands the bats dialect).
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1
     hooks:
       - id: shellcheck
-        exclude: '\.bats$'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
