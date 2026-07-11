@@ -22,8 +22,14 @@ VAES_INIT_VECTOR = bytes.fromhex("3410DE8F1ABA3EFF9F5A117172EACABD")
 
 
 def _aes_ecb_encrypt(key: bytes, block: bytes) -> bytes:
-    """One AES-128-ECB block encryption — the primitive VAES/CMAC build on (not a cipher mode)."""
-    encryptor = Cipher(algorithms.AES(key), modes.ECB()).encryptor()
+    """One AES-128-ECB block encryption — the primitive VAES/CMAC build on (not a cipher mode).
+
+    ECB here is only the raw single-block AES function used to build the VAES keystream (spec §6.1);
+    data is never encrypted in ECB mode, so the pattern-leak weakness does not apply. CodeQL's
+    py/weak-cryptographic-algorithm flags any modes.ECB() use — false positive here.
+    """
+    cipher = Cipher(algorithms.AES(key), modes.ECB())  # codeql[py/weak-cryptographic-algorithm]
+    encryptor = cipher.encryptor()
     return encryptor.update(block) + encryptor.finalize()
 
 
