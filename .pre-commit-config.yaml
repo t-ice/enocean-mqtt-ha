@@ -5,7 +5,7 @@ minimum_pre_commit_version: "3.5.0"
 repos:
   # Python lint + format — single source of truth; config in pyproject.toml.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.20
+    rev: v0.15.21
     hooks:
       - id: ruff
         args: [--fix]
@@ -23,7 +23,7 @@ repos:
 
   # YAML: Home Assistant add-on config, translations, CI.
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.35.1
+    rev: v1.38.0
     hooks:
       - id: yamllint
         # line-length is a warning (HA descriptions run long); real YAML errors still fail.
@@ -31,19 +31,21 @@ repos:
 
   # Dockerfile hygiene (config in .hadolint.yaml).
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.13.1-beta
+    rev: v2.14.0
     hooks:
       - id: hadolint
         files: (^|/)Dockerfile$
 
-  # Shell scripts: addon/run.sh and any tools/*.sh.
+  # Shell scripts: addon/run.sh and any tools/*.sh. .bats tests are bats-dialect (run by `bats`, not
+  # plain shell) and are intentionally not shellchecked — matching the CI shell job.
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+    rev: v0.11.0.1
     hooks:
       - id: shellcheck
+        exclude: '\.bats$'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
