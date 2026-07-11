@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.1
+
+Maintenance release — no functional changes to the add-on.
+
+- **Dependencies:** cryptography 49.0.0, ruamel.yaml 0.19.1.
+- **CI / build tooling:** GitHub Actions (docker build-push v7, login/buildx/codeql v4,
+  hadolint-action 3.3.0) and the uv builder image (0.11.28); pre-commit hooks refreshed
+  (ruff, yamllint, hadolint, shellcheck, pre-commit-hooks v6).
+- **Tests / docs:** run.sh guard-test assertions now actually fail on regression (bats SC2314) and
+  the .bats file is shellchecked again; documented the VAES ECB block primitive as a CodeQL false
+  positive.
+
 ## 1.0.0
 
 A Home Assistant add-on that bridges **EnOcean** devices to **MQTT**.
