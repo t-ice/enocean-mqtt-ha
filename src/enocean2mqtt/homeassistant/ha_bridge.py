@@ -255,10 +255,16 @@ class HomeAssistantBridge:
     async def _sync_sensor_discovery(self):
         """Discover/update every configured sensor, then prune devices no longer in the config."""
         known_uids = self._devmgr.db_list_from_fields("uid")
+        discovered_uids = set()
         for sensor in self._daemon.sensors:
             if sensor.ignore:
                 continue
             dev_uid, db_name, discover = self._discovery_identity(sensor)
+            # A model device expands into one sensor per RORG (e.g. Eltako /a5 + /f6) that share one
+            # dev_uid; they resolve to byte-identical discovery config, so publish it only once.
+            if dev_uid in discovered_uids:
+                continue
+            discovered_uids.add(dev_uid)
             sensor_db = self._devmgr.db_get_device_by_field("name", db_name)
             cfgtopics = sensor_db.get("cfgtopics", None) if sensor_db else None
             await discover(sensor, cfgtopics)
