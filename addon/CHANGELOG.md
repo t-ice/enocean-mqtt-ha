@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 — fix duplicate MQTT discovery for Eltako actuators
+
+- **Fix:** Multi-RORG model devices (Eltako FSB14/FSR14 and their Series-61/TF61 siblings) expand
+  into two derived sensors (`…/a5` + `…/f6`) that share one device id. Discovery published each
+  config topic twice, producing duplicated "device database" log lines and redundant retained MQTT
+  publishes on every startup. Discovery now runs once per device; entities are unchanged.
+
 ## 1.0.1
 
 Maintenance release — no functional changes to the add-on.

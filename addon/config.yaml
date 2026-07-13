@@ -2,7 +2,7 @@ name: "EnOcean MQTT for Home Assistant"
 description: "EnOcean to MQTT bridge for Home Assistant (whole EEP range; first-class Eltako support)"
 url: "https://github.com/t-ice/enocean-mqtt-ha"
 slug: "enocean_mqtt_ha"
-version: "1.0.1"
+version: "1.0.2"
 # Prebuilt per-arch images published by .github/workflows/release.yml on each tagged release.
 # HA substitutes {arch}; installs pull the image instead of building the Dockerfile locally.
 image: "ghcr.io/t-ice/{arch}-enocean-mqtt-ha"
