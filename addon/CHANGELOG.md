@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.3 — fix Eltako blind opening fully when re-commanded to its current position
+
+- **Fix:** The server-side `set_position_template` for Eltako blind/shutter actuators (FSB14,
+  FSB61, FSB61NP, FJ62, TF61J) derived the movement direction from `step = target − current`. When
+  the target equalled the current position (`step == 0`) it emitted an *up* command (`DB1=1`) with a
+  drive time of 0 — and a zero drive time makes the actuator run to the endstop, so the blind fully
+  opened instead of staying put. Re-commanding a blind to the position it already held (e.g. a
+  shading automation firing while the blind was already shaded) drove it fully open. The template
+  now emits a stop payload for `step == 0` and clamps the drive time to a minimum of 1 (0.1 s) so a
+  tiny step can never round down to a run-to-endstop command.
+
 ## 1.0.2 — fix duplicate MQTT discovery for Eltako actuators
 
 - **Fix:** Multi-RORG model devices (Eltako FSB14/FSR14 and their Series-61/TF61 siblings) expand

@@ -69,3 +69,49 @@ async def test_cover_set_position(ha):
     # HA set_position_template for +N% up: DB3/DB2 = drive-time (1/10 s), DB1=1, DB0=10.
     pkt = await _send(ha, b'{"DB3":"1","DB2":"44","DB1":"1","DB0":"10","send":"clear"}')
     assert pkt.data[1:5] == [0x01, 0x2C, 0x01, 0x0A]  # 0x012C = 300 -> 30.0 s drive time, up
+
+
+# --- set_position_template rendering (HA Jinja) -------------------------------------------------
+# Regression: server-side position drives direction from step = target - current. A step of 0
+# (re-commanding the position the cover already holds) must NOT move it. The old template mapped
+# step==0 to DB1=1 (up) with drive_time 0, and a zero drive time makes an FSB14 run to the endstop,
+# so the shutter fully opened instead of staying put.
+
+
+def _render_set_position(current_position, target, shut_time=64.0):
+    jinja2 = pytest.importorskip("jinja2")
+    from enocean2mqtt.homeassistant.mapping import MAPPING
+
+    cover = next(e for e in MAPPING["eltako"]["fsb14"]["entities"] if e.get("component") == "cover")
+    template = cover["config"]["set_position_template"]
+
+    attrs = {"shut_time": shut_time, "current_position": current_position}
+    env = jinja2.Environment()
+    env.globals["iif"] = lambda cond, a, b: a if cond else b
+    env.globals["state_attr"] = lambda entity_id, attr: attrs.get(attr)
+    import json
+
+    return json.loads(env.from_string(template).render(entity_id="cover.x", position=target))
+
+
+def test_set_position_noop_when_already_at_target():
+    # step == 0 -> Stop payload, no movement (was: DB1=1 + drive_time 0 -> full open).
+    out = _render_set_position(current_position=10, target=10)
+    assert out["DB1"] == "0" and out["DB0"] == "8", f"expected stop, got {out}"
+
+
+def test_set_position_closes_when_target_below_current():
+    out = _render_set_position(current_position=100, target=10)
+    assert out["DB1"] == "2" and out["DB0"] == "10"  # down/close, timed drive
+
+
+def test_set_position_opens_when_target_above_current():
+    out = _render_set_position(current_position=0, target=50)
+    assert out["DB1"] == "1" and out["DB0"] == "10"  # up/open, timed drive
+
+
+def test_set_position_tiny_step_never_zero_drive_time():
+    # A 1% step must not round the drive time to 0 (which would run to the endstop).
+    out = _render_set_position(current_position=10, target=11)
+    assert out["DB1"] == "1"
+    assert int(out["DB3"]) * 256 + int(out["DB2"]) >= 1
