@@ -12,7 +12,7 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         uses: astral-sh/setup-uv@v3
       - name: Set up Python ${{ matrix.python-version }}
@@ -31,7 +31,7 @@ jobs:
   shell:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y shellcheck
@@ -44,7 +44,7 @@ jobs:
   addon-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate AppArmor profile
         # -Q parses + resolves the includes (tunables/global, abstractions/*) without loading into
         # the kernel — catches syntax/include errors the macOS dev box cannot.
@@ -75,7 +75,7 @@ jobs:
             runner: ubuntu-24.04-arm
             base: ghcr.io/home-assistant/aarch64-base-python:3.12-alpine3.24
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
       - name: Build add-on image (${{ matrix.arch }}, native, repo-root context)
