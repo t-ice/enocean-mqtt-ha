@@ -71,7 +71,7 @@ jobs:
             ghcr.io/t-ice/${{ matrix.arch }}-enocean-mqtt-ha:${{ needs.guard.outputs.version }}
             ghcr.io/t-ice/${{ matrix.arch }}-enocean-mqtt-ha:latest
       - name: Attest build provenance (${{ matrix.arch }})
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/t-ice/${{ matrix.arch }}-enocean-mqtt-ha
           subject-digest: ${{ steps.push.outputs.digest }}
