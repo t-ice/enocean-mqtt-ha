@@ -16,7 +16,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag must match addon/config.yaml version
         id: v
         run: |
@@ -49,7 +49,7 @@ jobs:
             runner: ubuntu-24.04-arm
             base: ghcr.io/home-assistant/aarch64-base-python:3.12-alpine3.24
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
