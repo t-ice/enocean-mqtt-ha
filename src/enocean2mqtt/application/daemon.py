@@ -264,7 +264,7 @@ class EnoceanDaemon:
     async def _publish_mqtt(self, sensor, mqtt_json):
         """Publish decoded packet content to MQTT (delegates to MqttPublisher)"""
         if self.overlay is not None:
-            self.overlay.before_publish(sensor, mqtt_json)
+            await self.overlay.before_publish(sensor, mqtt_json)
         await self._publisher.publish(sensor, mqtt_json)
 
     async def _read_packet(self, packet, sensor):

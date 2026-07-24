@@ -58,6 +58,24 @@ def test_position_persists_across_reopen(tmp_path):
     assert _store(tmp_path).get_position(0x059ED79A) == 73
 
 
+def test_upsert_preserves_position_and_rlc(tmp_path):
+    """Discovery runs db_upsert_device on every (re)connect; it must MERGE onto the existing row so
+    runtime state (cover position, secure rolling codes) isn't wiped. Regression: the upsert built a
+    fresh doc without these fields, so a reconnect reset the position to unknown."""
+    s = _store(tmp_path)
+    model = {"name": "e/Rollo/a5", "address": 0xFF94CE9C, "model": "eltako/fsb14"}
+    s.db_upsert_device(model, "uid-model")
+    s.set_position(0xFF94CE9C, 55)
+    s.set_rlc(0xFF94CE9C, rlc=1234)
+
+    # A second upsert (as a reconnect's discovery would issue) must keep position + rlc.
+    s.db_upsert_device(model, "uid-model", "cfgtopics", ["cover/x/config"])
+
+    assert s.get_position(0xFF94CE9C) == 55
+    assert s.get_rlc(0xFF94CE9C) == (1234, None)
+    assert s.db_get_device_by_field("uid", "uid-model")["cfgtopics"] == ["cover/x/config"]
+
+
 def test_rlc_persists_across_reopen(tmp_path):
     s = _store(tmp_path)
     s.db_add_device(_SENSOR, "uid-1")

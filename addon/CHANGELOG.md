@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.4 — fix Eltako blind position wrong after a Home Assistant restart
+
+- **Fix:** An Eltako blind/shutter (FSB14, FSB61, FSB61NP, FJ62, TF61J) could come back showing the
+  wrong position after a Home Assistant restart — e.g. reporting the shaded position (10 %) while
+  physically fully open. The cover's `position_topic` was the `+` wildcard, which also matches the
+  device's `…/a5` and `…/f6` state topics; each carries its own retained `POS` (from set_position,
+  and from the F6 end-position telegrams respectively). After a full open the fresh `POS=100` landed
+  on `…/f6` while a stale `POS` from the last set_position stayed retained on `…/a5`; on a restart
+  both retained messages replayed and the last one to arrive won the position restore. The absolute
+  position is now published to a single dedicated retained `…/pos` topic — on every change and, from
+  the store, on connect — and `position_topic` points at it, so the restored value is deterministic.
+- **Fix:** `db_upsert_device` rebuilt the device row from scratch on every discovery run (each
+  reconnect), wiping runtime state not part of the discovered identity — the persisted cover
+  `position` and secure `rlc`/`rlc_snd`. It now merges onto the existing row, so that state survives
+  a reconnect.
+
 ## 1.0.3 — fix Eltako blind opening fully when re-commanded to its current position
 
 - **Fix:** The server-side `set_position_template` for Eltako blind/shutter actuators (FSB14,

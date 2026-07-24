@@ -198,6 +198,7 @@ class HomeAssistantBridge:
             )
             await self._mqtt_discovery_stats()
         await self._publish_cover_shut_times()
+        await self._publish_cover_positions()
         self._first_mqtt_connect = False
 
     async def intercept_inbound(self, topic, payload) -> bool:
@@ -212,10 +213,10 @@ class HomeAssistantBridge:
             return True  # discovery-config traffic is ours either way
         return False
 
-    def before_publish(self, sensor, mqtt_json):
+    async def before_publish(self, sensor, mqtt_json):
         """For shutter/blind models, derive + persist an absolute cover position (POS)."""
         if sensor.model in self._COVER_MODELS:
-            self._update_cover_position(sensor, mqtt_json)
+            await self._update_cover_position(sensor, mqtt_json)
 
     # =============================================================================================
     # DISCOVERY
@@ -284,6 +285,17 @@ class HomeAssistantBridge:
                 await self._daemon.publish(
                     sensor.name[:-3] + "/shut_time", sensor.shut_time, retain=True
                 )
+
+    async def _publish_cover_positions(self):
+        """Re-publish each cover's last known absolute position (from the store) to its dedicated
+        retained ``/pos`` topic on connect. Restores the authoritative position after an add-on
+        restart and, once deployed, heals covers whose ``/pos`` is missing or whose old state topics
+        hold a stale POS — the dedicated topic is the only one HA reads for position."""
+        for sensor in self._daemon.sensors:
+            if sensor.model in self._COVER_MODELS and sensor.rorg == 0xA5:
+                pos = self._devmgr.get_position(sensor.address)
+                if pos is not None:
+                    await self._publish_cover_position(sensor.name.rsplit("/", 1)[0], pos)
 
     def _decorate_discovery(self, cfg):
         """Add availability (LWT) + origin to a discovery config.
@@ -577,10 +589,13 @@ class HomeAssistantBridge:
     # =============================================================================================
     # ENOCEAN TO MQTT (cover position)
     # =============================================================================================
-    def _update_cover_position(self, sensor, mqtt_json):
+    async def _update_cover_position(self, sensor, mqtt_json):
         """Maintain an absolute cover position for FSB-type actuators and persist it.
 
-        Thin DB wrapper around the pure :func:`cover.update_cover_position`.
+        Thin DB wrapper around the pure :func:`cover.update_cover_position`. The result is stored
+        (the accumulation base for the next relative telegram) and published to the device's
+        dedicated retained ``/pos`` topic — the single authoritative position HA restores from
+        (see :meth:`_publish_cover_position`).
         """
         address = sensor.address
         pos = update_cover_position(
@@ -593,3 +608,17 @@ class HomeAssistantBridge:
             return
         mqtt_json["POS"] = pos
         self._devmgr.set_position(address, pos)
+        await self._publish_cover_position(sensor.name.rsplit("/", 1)[0], pos)
+
+    async def _publish_cover_position(self, device_topic, pos):
+        """Publish an absolute cover position to the device's dedicated retained ``/pos`` topic.
+
+        HA reads ``current_position`` from this single topic (mapping ``position_topic='pos'``).
+        The state ``+`` wildcard also matches ``/a5`` and ``/f6``, which each carry a POS from their
+        own telegrams; a dedicated position topic makes the value HA restores after a restart
+        deterministic, so a stale retained POS on one state subtopic can no longer override the
+        fresh one.
+        """
+        await self._daemon.publish(
+            device_topic + "/pos", json.dumps({"POS": pos}), retain=True
+        )

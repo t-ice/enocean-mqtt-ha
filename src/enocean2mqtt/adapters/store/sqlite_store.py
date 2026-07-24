@@ -212,8 +212,14 @@ class SqliteDeviceStore:
         return False
 
     def db_upsert_device(self, sensor, uid, attr_name=None, attr=None):
-        """Update or add device to the database"""
-        sensor_db = {"uid": uid}
+        """Update or add device to the database.
+
+        Merges onto the existing row (keyed by uid) rather than replacing it, so runtime state that
+        isn't part of the discovered identity — the cover ``position``, secure ``rlc``/``rlc_snd`` —
+        survives the discovery upsert that runs on every (re)connect. Without this, a reconnect
+        wiped the persisted position (and rolling codes)."""
+        sensor_db = dict(self.db_get_device_by_field("uid", uid) or {})
+        sensor_db["uid"] = uid
         if not sensor.get("model"):
             sensor_db["address"] = sensor["address"]
             sensor_db["name"] = sensor["name"]
