@@ -619,6 +619,4 @@ class HomeAssistantBridge:
         deterministic, so a stale retained POS on one state subtopic can no longer override the
         fresh one.
         """
-        await self._daemon.publish(
-            device_topic + "/pos", json.dumps({"POS": pos}), retain=True
-        )
+        await self._daemon.publish(device_topic + "/pos", json.dumps({"POS": pos}), retain=True)
