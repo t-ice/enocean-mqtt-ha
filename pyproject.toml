@@ -42,7 +42,7 @@ dev = [
     "ruff>=0.15.22",
     "mypy>=2.3.0",
     "types-PyYAML",
-    "pre-commit>=3.5",
+    "pre-commit>=4.6.1",
     "yamllint>=1.35",
     "vulture>=2.11",
 ]
