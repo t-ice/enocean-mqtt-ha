@@ -25,6 +25,16 @@ POSITION_SUBTOPIC = "/" + POSITION_TOPIC
 #: stops replaying ``{"POS": n}`` into those ``+`` subscribers.
 LEGACY_POSITION_SUBTOPIC = "/pos"
 
+#: Sub-topic carrying the cover's configured travel time (retained, a bare number) that HA exposes
+#: as the ``shut_time`` attribute via ``json_attributes_topic``. Two levels deep for the same reason
+#: as ``POSITION_TOPIC``: at ``{device}/shut_time`` the bare ``"25"`` was delivered to every ``+``
+#: subscriber on the device and blew up each of their value templates.
+SHUT_TIME_TOPIC = "_ha/shut_time"
+SHUT_TIME_SUBTOPIC = "/" + SHUT_TIME_TOPIC
+
+#: The single-level travel-time topic used up to 1.0.5, cleared on connect.
+LEGACY_SHUT_TIME_SUBTOPIC = "/shut_time"
+
 
 def update_cover_position(prev_pos, raw_data, mqtt_json, shut_time):
     """Return the new absolute position (0=closed .. 100=open), or ``None`` to leave unchanged.

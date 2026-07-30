@@ -24,7 +24,12 @@ from unittest import mock
 
 import pytest
 
-from enocean2mqtt.homeassistant.cover import LEGACY_POSITION_SUBTOPIC, POSITION_TOPIC
+from enocean2mqtt.homeassistant.cover import (
+    LEGACY_POSITION_SUBTOPIC,
+    LEGACY_SHUT_TIME_SUBTOPIC,
+    POSITION_TOPIC,
+    SHUT_TIME_TOPIC,
+)
 
 CONF = {
     "mqtt_host": "x",
@@ -36,6 +41,8 @@ CONF = {
 
 POS_TOPIC = "enocean2mqtt/Rollo/" + POSITION_TOPIC
 LEGACY_TOPIC = "enocean2mqtt/Rollo" + LEGACY_POSITION_SUBTOPIC
+SHUT_TIME_FULL_TOPIC = "enocean2mqtt/Rollo/" + SHUT_TIME_TOPIC
+LEGACY_SHUT_TIME_TOPIC = "enocean2mqtt/Rollo" + LEGACY_SHUT_TIME_SUBTOPIC
 
 
 @pytest.fixture
@@ -145,10 +152,23 @@ async def test_on_connect_clears_legacy_pos_topic(ha):
     assert _published(ha)[LEGACY_TOPIC] == ""
 
 
-async def test_position_topic_is_invisible_to_the_state_wildcard(ha):
-    """The position topic must be >1 level below the device base: '+' matches exactly one level,
-    and the cover / rssi / last_seen entities all subscribe to '<device>/+'."""
-    assert "/" in POSITION_TOPIC
+async def test_on_connect_moves_shut_time_off_the_wildcard(ha):
+    """The travel time is a bare number, not a telegram — at '<device>/shut_time' it reached the
+    same three '+' subscribers and broke their templates. It moved two levels deep too, and the
+    legacy topic is cleared."""
+    await ha._daemon._on_broker_connected()
+
+    published = _published(ha)
+    assert published[SHUT_TIME_FULL_TOPIC] == 64
+    assert published[LEGACY_SHUT_TIME_TOPIC] == ""
+
+
+@pytest.mark.parametrize("topic", [POSITION_TOPIC, SHUT_TIME_TOPIC])
+def test_bridge_topics_are_invisible_to_the_state_wildcard(topic):
+    """Every non-telegram topic the bridge publishes under a device must be >1 level below the
+    device base: '+' matches exactly one level, and the cover / rssi / last_seen entities all
+    subscribe to '<device>/+'."""
+    assert "/" in topic
 
 
 def test_cover_mapping_uses_dedicated_position_topic():
@@ -159,12 +179,13 @@ def test_cover_mapping_uses_dedicated_position_topic():
     cover = next(e for e in MAPPING["eltako"]["fsb14"]["entities"] if e.get("component") == "cover")
     cfg = cover["config"]
     assert cfg["position_topic"] == POSITION_TOPIC
+    assert cfg["json_attributes_topic"] == SHUT_TIME_TOPIC
     assert cfg["state_topic"] == "+"  # state still reads both /a5 and /f6
 
 
-def test_every_cover_mapping_uses_the_same_position_topic():
-    """All FSB-type cover mappings (fsb14/fsb61/fj62/tf61j, …) must use the published topic —
-    a mismatch would silently leave that model's position unreadable in HA."""
+def test_every_cover_mapping_uses_the_bridge_topics():
+    """All FSB-type cover mappings (fsb14/fsb61/fj62/tf61j, …) must use the published topics —
+    a mismatch would silently leave that model's position or travel time unreadable in HA."""
     from enocean2mqtt.homeassistant.mapping import MAPPING
 
     found = 0
@@ -179,4 +200,5 @@ def test_every_cover_mapping_uses_the_same_position_topic():
                 if "position_topic" in cfg:
                     found += 1
                     assert cfg["position_topic"] == POSITION_TOPIC
+                    assert cfg["json_attributes_topic"] == SHUT_TIME_TOPIC
     assert found >= 3

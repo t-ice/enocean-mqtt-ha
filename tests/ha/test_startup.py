@@ -54,8 +54,11 @@ async def test_on_connect_sequence(ha):
     assert topics.index(learn_cfg) < topics.index(learn_status)
     assert payloads[learn_status] == "OFF"  # teach-in disabled on startup
 
-    # 3) the cover's configured shut_time is published (retained single source of truth)
-    assert payloads["enocean2mqtt/Rollo/shut_time"] == 64
+    # 3) the cover's configured shut_time is published (retained single source of truth), two
+    #    levels down so the device's state '+' subscribers never see the bare number; the legacy
+    #    single-level topic is cleared.
+    assert payloads["enocean2mqtt/Rollo/_ha/shut_time"] == 64
+    assert payloads["enocean2mqtt/Rollo/shut_time"] == ""
 
     # sanity: the LEARN system device config targets the ENOCEAN2MQTT virtual device
     assert json.loads(payloads[learn_cfg])["device"]["name"] == "ENOCEAN2MQTT"

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.6 — move the blind travel-time topic off the state wildcard too
+
+- **Fix:** Same defect as 1.0.5, at the second topic the bridge publishes under a device. A blind's
+  configured travel time went to `{device}/shut_time` as a bare retained number (e.g. `25`), one
+  level below the device base — so the `+` wildcard delivered it to the cover and to the `rssi` /
+  `last_seen` diagnostic sensors, and none of their value templates can parse a plain integer.
+  Every add-on connect republishes all travel times, and every Home Assistant reconnect replays the
+  retained ones, so each event produced a burst of `Payload is not supported` / `'int object' has no
+  attribute '_RSSI_'` / `… no attribute '_RAW_DATA_'` errors — roughly three per configured blind.
+  The travel time now goes to `{device}/_ha/shut_time`, which `+` cannot match, and the legacy topic
+  is cleared on connect. `json_attributes_topic` follows, so the `shut_time` attribute that
+  `set_position_template` reads is unchanged. No user action is needed.
+- A regression test now asserts that *every* topic the bridge publishes below a device sits more
+  than one level deep, so this class of bug cannot come back at a third topic.
+
 ## 1.0.5 — stop the blind position topic from flooding the Home Assistant log
 
 - **Fix:** The dedicated cover position topic introduced in 1.0.4 sat one level below the device

@@ -25,7 +25,9 @@ from enocean2mqtt.domain.config import Config
 from enocean2mqtt.domain.sensor import Sensor
 from enocean2mqtt.homeassistant.cover import (
     LEGACY_POSITION_SUBTOPIC,
+    LEGACY_SHUT_TIME_SUBTOPIC,
     POSITION_SUBTOPIC,
+    SHUT_TIME_SUBTOPIC,
     update_cover_position,
 )
 from enocean2mqtt.homeassistant.discovery.mapping_lookup import EepMappingLookup, ModelMappingLookup
@@ -279,15 +281,25 @@ class HomeAssistantBridge:
 
     async def _publish_cover_shut_times(self):
         """Publish each cover's configured run time as a retained attribute (single source of truth
-        for set_position_template), so a separate HA number entity is unnecessary."""
+        for set_position_template), so a separate HA number entity is unnecessary.
+
+        Sits two levels below the device base for the same reason as the position topic: the bare
+        number is not a telegram, so delivering it to the device's ``state_topic='+'`` subscribers
+        (the cover plus the ``rssi``/``last_seen`` sensors) breaks all three of their value
+        templates. The legacy single-level topic is cleared so the broker stops replaying it.
+        """
         for sensor in self._daemon.sensors:
             if (
                 sensor.model in self._COVER_MODELS
                 and sensor.shut_time is not None
                 and sensor.rorg == 0xA5
             ):
+                device_topic = sensor.name[:-3]
                 await self._daemon.publish(
-                    sensor.name[:-3] + "/shut_time", sensor.shut_time, retain=True
+                    device_topic + LEGACY_SHUT_TIME_SUBTOPIC, "", retain=True
+                )
+                await self._daemon.publish(
+                    device_topic + SHUT_TIME_SUBTOPIC, sensor.shut_time, retain=True
                 )
 
     async def _publish_cover_positions(self):
