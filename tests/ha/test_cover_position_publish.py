@@ -1,15 +1,20 @@
-"""The absolute cover position is published to a single, dedicated retained ``/pos`` topic.
+"""The absolute cover position is published to a single, dedicated retained position topic.
 
-Regression: the cover's ``position_topic`` used to be the ``+`` wildcard, which also matches the
+Regression 1: the cover's ``position_topic`` used to be the ``+`` wildcard, which also matches the
 ``/a5`` and ``/f6`` state topics — each of which carries its own ``POS`` (from set_position and
 from the F6 end-position telegrams respectively). After a full open the fresh POS=100 landed on
 ``/f6`` while a stale POS from the last set_position stayed retained on ``/a5``; on an HA restart
 both retained messages replayed and the last one to arrive won the position restore, so the cover
 could come back showing the stale (shaded) position while physically open.
 
-The fix publishes the authoritative position to a dedicated ``{device}/pos`` topic — on every change
-and, from the store, on connect — and points ``position_topic`` at it, so the restored value is
-deterministic.
+Regression 2: the dedicated topic introduced for that fix was ``{device}/pos`` — a single level
+below the device base, and therefore itself matched by ``+``. Every position update was delivered
+to the three ``state_topic='+'`` subscribers on the same device (the cover, plus the ``rssi`` and
+``last_seen`` diagnostic sensors), and none of their value templates can read ``{"POS": n}``: HA
+logged "Payload is not supported" for the cover, a missing ``_RSSI_`` for one sensor and an
+``as_local(None)`` crash for the other. The topic therefore sits two levels deep — ``+`` matches
+exactly one level, so ``{device}/_ha/pos`` is invisible to them — and the legacy topic is cleared
+on connect so the broker stops replaying it.
 """
 
 import json
@@ -19,6 +24,8 @@ from unittest import mock
 
 import pytest
 
+from enocean2mqtt.homeassistant.cover import LEGACY_POSITION_SUBTOPIC, POSITION_TOPIC
+
 CONF = {
     "mqtt_host": "x",
     "mqtt_port": "1883",
@@ -26,6 +33,9 @@ CONF = {
     "mqtt_discovery_prefix": "homeassistant/",
     "enocean_port": "socket://127.0.0.1:3000",
 }
+
+POS_TOPIC = "enocean2mqtt/Rollo/" + POSITION_TOPIC
+LEGACY_TOPIC = "enocean2mqtt/Rollo" + LEGACY_POSITION_SUBTOPIC
 
 
 @pytest.fixture
@@ -70,13 +80,13 @@ def _published(ha):
 
 
 async def test_end_position_telegram_publishes_absolute_pos(ha):
-    """A full-open F6 end-position telegram (0x70) persists POS=100 and publishes it to /pos."""
+    """A full-open F6 end-position telegram (0x70) persists POS=100 and publishes it."""
     mqtt_json = {"_RAW_DATA_": "70:30"}
     await ha.before_publish(_f6(ha), mqtt_json)
 
     assert mqtt_json["POS"] == 100
     assert ha._devmgr.get_position(0xFF94CE9C) == 100
-    assert json.loads(_published(ha)["enocean2mqtt/Rollo/pos"]) == {"POS": 100}
+    assert json.loads(_published(ha)[POS_TOPIC]) == {"POS": 100}
 
 
 async def test_close_end_position_publishes_zero(ha):
@@ -84,7 +94,7 @@ async def test_close_end_position_publishes_zero(ha):
     await ha.before_publish(_f6(ha), mqtt_json)
 
     assert mqtt_json["POS"] == 0
-    assert json.loads(_published(ha)["enocean2mqtt/Rollo/pos"]) == {"POS": 0}
+    assert json.loads(_published(ha)[POS_TOPIC]) == {"POS": 0}
 
 
 async def test_running_time_telegram_publishes_accumulated_pos(ha):
@@ -96,7 +106,7 @@ async def test_running_time_telegram_publishes_accumulated_pos(ha):
     await ha.before_publish(_a5(ha), mqtt_json)
 
     assert mqtt_json["POS"] == 10
-    assert json.loads(_published(ha)["enocean2mqtt/Rollo/pos"]) == {"POS": 10}
+    assert json.loads(_published(ha)[POS_TOPIC]) == {"POS": 10}
 
 
 async def test_movement_start_telegram_does_not_touch_position(ha):
@@ -108,29 +118,65 @@ async def test_movement_start_telegram_does_not_touch_position(ha):
 
     assert "POS" not in mqtt_json
     assert ha._devmgr.get_position(0xFF94CE9C) == 37  # unchanged
-    assert "enocean2mqtt/Rollo/pos" not in _published(ha)
+    assert POS_TOPIC not in _published(ha)
 
 
 async def test_on_connect_republishes_stored_position(ha):
-    """On connect the last known position is re-published to /pos (self-heals an HA restart)."""
+    """On connect the last known position is re-published (self-heals an HA restart)."""
     ha._devmgr.set_position(0xFF94CE9C, 42)
     await ha._daemon._on_broker_connected()
 
-    assert json.loads(_published(ha)["enocean2mqtt/Rollo/pos"]) == {"POS": 42}
+    assert json.loads(_published(ha)[POS_TOPIC]) == {"POS": 42}
 
 
 async def test_on_connect_without_stored_position_publishes_no_pos(ha):
-    """With no stored position yet, connect must not publish a bogus /pos value."""
+    """With no stored position yet, connect must not publish a bogus position value."""
     await ha._daemon._on_broker_connected()
 
-    assert "enocean2mqtt/Rollo/pos" not in _published(ha)
+    assert POS_TOPIC not in _published(ha)
+
+
+async def test_on_connect_clears_legacy_pos_topic(ha):
+    """The 1.0.4 single-level '/pos' topic is cleared, so the broker stops replaying it into the
+    cover's and the rssi/last_seen sensors' '+' subscriptions."""
+    ha._devmgr.set_position(0xFF94CE9C, 42)
+    await ha._daemon._on_broker_connected()
+
+    assert _published(ha)[LEGACY_TOPIC] == ""
+
+
+async def test_position_topic_is_invisible_to_the_state_wildcard(ha):
+    """The position topic must be >1 level below the device base: '+' matches exactly one level,
+    and the cover / rssi / last_seen entities all subscribe to '<device>/+'."""
+    assert "/" in POSITION_TOPIC
 
 
 def test_cover_mapping_uses_dedicated_position_topic():
-    """The mapping points position at the dedicated 'pos' topic, not the '+' state wildcard."""
+    """The mapping points position at the dedicated topic, not the '+' state wildcard, and stays in
+    sync with what the bridge publishes."""
     from enocean2mqtt.homeassistant.mapping import MAPPING
 
     cover = next(e for e in MAPPING["eltako"]["fsb14"]["entities"] if e.get("component") == "cover")
     cfg = cover["config"]
-    assert cfg["position_topic"] == "pos"
+    assert cfg["position_topic"] == POSITION_TOPIC
     assert cfg["state_topic"] == "+"  # state still reads both /a5 and /f6
+
+
+def test_every_cover_mapping_uses_the_same_position_topic():
+    """All FSB-type cover mappings (fsb14/fsb61/fj62/tf61j, …) must use the published topic —
+    a mismatch would silently leave that model's position unreadable in HA."""
+    from enocean2mqtt.homeassistant.mapping import MAPPING
+
+    found = 0
+    for models in MAPPING.values():
+        if not isinstance(models, dict):
+            continue
+        for model in models.values():
+            if not isinstance(model, dict):
+                continue
+            for entity in model.get("entities", []) or []:
+                cfg = entity.get("config", {})
+                if "position_topic" in cfg:
+                    found += 1
+                    assert cfg["position_topic"] == POSITION_TOPIC
+    assert found >= 3

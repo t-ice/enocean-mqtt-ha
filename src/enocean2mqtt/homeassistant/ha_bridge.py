@@ -23,7 +23,11 @@ from enocean2mqtt.config import as_bool
 from enocean2mqtt.devices import append_device_to_yaml
 from enocean2mqtt.domain.config import Config
 from enocean2mqtt.domain.sensor import Sensor
-from enocean2mqtt.homeassistant.cover import update_cover_position
+from enocean2mqtt.homeassistant.cover import (
+    LEGACY_POSITION_SUBTOPIC,
+    POSITION_SUBTOPIC,
+    update_cover_position,
+)
 from enocean2mqtt.homeassistant.discovery.mapping_lookup import EepMappingLookup, ModelMappingLookup
 from enocean2mqtt.homeassistant.discovery.publisher import DiscoveryPublisher
 from enocean2mqtt.homeassistant.mapping import MAPPING
@@ -288,14 +292,22 @@ class HomeAssistantBridge:
 
     async def _publish_cover_positions(self):
         """Re-publish each cover's last known absolute position (from the store) to its dedicated
-        retained ``/pos`` topic on connect. Restores the authoritative position after an add-on
-        restart and, once deployed, heals covers whose ``/pos`` is missing or whose old state topics
-        hold a stale POS — the dedicated topic is the only one HA reads for position."""
+        retained position topic on connect. Restores the authoritative position after an add-on
+        restart and, once deployed, heals covers whose position topic is missing or whose old state
+        topics hold a stale POS — the dedicated topic is the only one HA reads for position.
+
+        Also clears the legacy single-level ``/pos`` topic from 1.0.4. It sits one level below the
+        device base and is therefore matched by the ``state_topic='+'`` subscriptions of the cover
+        and of the ``rssi``/``last_seen`` sensors; while its retained payload survives, the broker
+        replays ``{"POS": n}`` into them on every resubscribe and each one logs a template error.
+        """
         for sensor in self._daemon.sensors:
             if sensor.model in self._COVER_MODELS and sensor.rorg == 0xA5:
+                device_topic = sensor.name.rsplit("/", 1)[0]
+                await self._daemon.publish(device_topic + LEGACY_POSITION_SUBTOPIC, "", retain=True)
                 pos = self._devmgr.get_position(sensor.address)
                 if pos is not None:
-                    await self._publish_cover_position(sensor.name.rsplit("/", 1)[0], pos)
+                    await self._publish_cover_position(device_topic, pos)
 
     def _decorate_discovery(self, cfg):
         """Add availability (LWT) + origin to a discovery config.
@@ -594,7 +606,7 @@ class HomeAssistantBridge:
 
         Thin DB wrapper around the pure :func:`cover.update_cover_position`. The result is stored
         (the accumulation base for the next relative telegram) and published to the device's
-        dedicated retained ``/pos`` topic — the single authoritative position HA restores from
+        dedicated retained ``/_ha/pos`` topic — the single authoritative position HA restores from
         (see :meth:`_publish_cover_position`).
         """
         address = sensor.address
@@ -611,12 +623,22 @@ class HomeAssistantBridge:
         await self._publish_cover_position(sensor.name.rsplit("/", 1)[0], pos)
 
     async def _publish_cover_position(self, device_topic, pos):
-        """Publish an absolute cover position to the device's dedicated retained ``/pos`` topic.
+        """Publish an absolute cover position to the device's dedicated retained position topic.
 
-        HA reads ``current_position`` from this single topic (mapping ``position_topic='pos'``).
-        The state ``+`` wildcard also matches ``/a5`` and ``/f6``, which each carry a POS from their
-        own telegrams; a dedicated position topic makes the value HA restores after a restart
-        deterministic, so a stale retained POS on one state subtopic can no longer override the
-        fresh one.
+        HA reads ``current_position`` from this single topic (mapping
+        ``position_topic='_ha/pos'``). The state ``+`` wildcard also matches ``/a5`` and ``/f6``,
+        which each carry a POS from their own telegrams; a dedicated position topic makes the value
+        HA restores after a restart deterministic, so a stale retained POS on one state subtopic can
+        no longer override the fresh one.
+
+        The topic deliberately sits *two* levels below the device base: MQTT's ``+`` matches exactly
+        one level, so ``<device>/_ha/pos`` is invisible to the ``+`` subscribers that share this
+        device — the cover itself plus the ``rssi`` and ``last_seen`` sensors (which get
+        ``state_topic='+'`` from ``mapping_lookup.apply_entity_override``). The single-level
+        ``<device>/pos`` used in 1.0.4 was delivered to all three, and none of their value templates
+        can read ``{"POS": n}``: the cover logged "Payload is not supported", ``rssi`` missed
+        ``_RSSI_``, and ``last_seen`` crashed in ``as_local(None)`` because ``_DATE_`` was absent.
         """
-        await self._daemon.publish(device_topic + "/pos", json.dumps({"POS": pos}), retain=True)
+        await self._daemon.publish(
+            device_topic + POSITION_SUBTOPIC, json.dumps({"POS": pos}), retain=True
+        )

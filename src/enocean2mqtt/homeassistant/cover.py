@@ -12,6 +12,19 @@ against real telegram shapes captured from the live log.
 
 from __future__ import annotations
 
+#: Sub-topic (below the device base) carrying the retained absolute position HA reads.
+#:
+#: Two levels deep on purpose: MQTT's ``+`` matches exactly one level, so this topic stays invisible
+#: to the ``state_topic='+'`` subscribers on the same device (the cover itself plus the ``rssi`` and
+#: ``last_seen`` diagnostic sensors). ``POSITION_TOPIC`` must stay in sync with ``position_topic``
+#: in the FSB cover mappings — ``tests/ha/test_cover_position_publish.py`` asserts that.
+POSITION_TOPIC = "_ha/pos"
+POSITION_SUBTOPIC = "/" + POSITION_TOPIC
+
+#: The single-level topic used by 1.0.4. Its retained payload is cleared on connect so the broker
+#: stops replaying ``{"POS": n}`` into those ``+`` subscribers.
+LEGACY_POSITION_SUBTOPIC = "/pos"
+
 
 def update_cover_position(prev_pos, raw_data, mqtt_json, shut_time):
     """Return the new absolute position (0=closed .. 100=open), or ``None`` to leave unchanged.

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.5 — stop the blind position topic from flooding the Home Assistant log
+
+- **Fix:** The dedicated cover position topic introduced in 1.0.4 sat one level below the device
+  base (`…/pos`) and was therefore matched by the `+` wildcard that three entities on the same
+  device subscribe to: the cover itself (`state_topic: '+'`) and the `rssi` / `last_seen`
+  diagnostic sensors. Every position update was delivered to all three, and none of their value
+  templates can read `{"POS": n}` — Home Assistant logged `Payload is not supported` for the cover,
+  a missing `_RSSI_` for one sensor and an `as_local(None)` crash for the other. On a busy
+  installation this produced well over a thousand errors within a few days. The position now goes
+  to `…/_ha/pos`: MQTT's `+` matches exactly one level, so the topic is invisible to those
+  subscribers. The old `…/pos` topic is cleared (empty retained message) on connect, so the broker
+  stops replaying it. No user action is needed and blind positions still survive a restart.
+
 ## 1.0.4 — fix Eltako blind position wrong after a Home Assistant restart
 
 - **Fix:** An Eltako blind/shutter (FSB14, FSB61, FSB61NP, FJ62, TF61J) could come back showing the
