@@ -29,9 +29,11 @@ repos:
         # line-length is a warning (HA descriptions run long); real YAML errors still fail.
         args: [-c, .yamllint]
 
-  # Dockerfile hygiene (config in .hadolint.yaml).
+  # Dockerfile hygiene (config in .hadolint.yaml). Keep in step with the hadolint version
+  # hadolint/hadolint-action pulls in (.github/workflows/ci.yml) — a newer hadolint adds rules, and
+  # the mismatch means CI fails on a Dockerfile that passed locally.
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.14.0
+    rev: v2.15.0
     hooks:
       - id: hadolint
         files: (^|/)Dockerfile$

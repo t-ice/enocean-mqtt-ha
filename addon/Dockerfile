@@ -48,7 +48,11 @@ COPY addon/run.sh /run.sh
 RUN chmod a+x /run.sh
 
 # Healthcheck: the daemon process must be alive (busybox pgrep ships in the HA base image).
+# Exec form (DL3025) spelling out the shell, because pgrep's exit code IS the check. The bracket in
+# '[e]nocean2mqtt' keeps the check from matching itself — pgrep -f scans full command lines, and the
+# check's own `sh -c pgrep -f …` line contains the daemon name, so a plain pattern always finds a
+# match and the container would report healthy even with the daemon dead.
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD pgrep -f enocean2mqtt >/dev/null 2>&1 || exit 1
+    CMD ["/bin/sh", "-c", "pgrep -f '[e]nocean2mqtt' >/dev/null 2>&1"]
 
 CMD [ "/run.sh" ]
