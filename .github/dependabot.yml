@@ -1,28 +1,39 @@
 version: 2
+
+# Cadence: monthly, deliberately. A weekly interval produced a steady trickle of one-package PRs
+# that outpaced how often this repo is actually tended, so they piled up unmerged — a stale PR is
+# worth less than no PR. Monthly gives one batch to work through in a sitting. NOT grouped: every
+# bump keeps its own PR so it can be reviewed and reverted on its own. Security updates ignore the
+# schedule entirely and still open as soon as an advisory lands, which is what makes a monthly
+# routine cadence safe.
 updates:
   # Keep the GitHub Actions used by our workflows current (+ security alerts).
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     commit-message:
       prefix: ci
 
   # Python dependencies in pyproject.toml. The `uv` ecosystem updates pyproject.toml AND relocks
   # uv.lock in the same PR, so the --frozen CI install stays green (unlike the plain pip ecosystem).
+  # Several open PRs here all rewrite uv.lock: merge the monthly batch in one go and git's 3-way
+  # merge usually copes; if one goes conflicting, `@dependabot rebase` relocks it.
   - package-ecosystem: uv
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     commit-message:
       prefix: deps
 
   # The pinned uv builder image in the add-on Dockerfile (FROM ghcr.io/astral-sh/uv:<ver>). The HA
   # base image is passed via `ARG BUILD_FROM`, not a FROM literal, so Dependabot can't track it —
-  # bump that one by hand in build.yaml (see CONTRIBUTING.md -> Dependencies).
+  # bump that one by hand in build.yaml (see CONTRIBUTING.md -> Dependencies). The same uv pin is
+  # duplicated in tools/package-addon.sh's generated Dockerfile, which Dependabot cannot see —
+  # move the two together.
   - package-ecosystem: docker
     directory: /addon
     schedule:
-      interval: weekly
+      interval: monthly
     commit-message:
       prefix: ci
