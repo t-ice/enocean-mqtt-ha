@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.7 — the container healthcheck actually reports a dead daemon now
+
+- **Fix:** The add-on's healthcheck never worked, and always reported healthy. It ran
+  `pgrep -f enocean2mqtt`, which Docker executes as `/bin/sh -c "pgrep -f enocean2mqtt …"` — and
+  since `pgrep -f` scans full command lines, the check found its own wrapper shell and exited 0 no
+  matter what. A container with the daemon killed, or with no daemon at all, stayed healthy
+  indefinitely, so Home Assistant had no way to notice the bridge had died. The pattern is now
+  `'[e]nocean2mqtt'`, which the wrapper's own command line does not contain, so only the real
+  process counts; a container flips to unhealthy one interval (60 s) after the daemon stops. No
+  user action is needed.
+- Dependency refresh: `cryptography` 50.0.1 (the AES/CMAC primitives behind secure telegrams) and
+  the pinned `uv` builder image 0.12.10 for the add-on build; the rest are dev/CI tooling with no
+  effect on the shipped add-on.
+
 ## 1.0.6 — move the blind travel-time topic off the state wildcard too
 
 - **Fix:** Same defect as 1.0.5, at the second topic the bridge publishes under a device. A blind's

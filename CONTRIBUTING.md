@@ -61,11 +61,17 @@ comes in transitively via aiomqtt), pinned to major-version ranges and frozen in
 (pytest, ruff, mypy, yamllint, …) are the `dev` optional group. The build uses `uv` (pinned in
 `addon/Dockerfile`) on top of Home Assistant's `base-python` image (`addon/build.yaml`).
 
-**Dependabot** (`.github/dependabot.yml`) keeps them current, weekly:
+**Dependabot** (`.github/dependabot.yml`) keeps them current, **monthly**:
 
 - **`uv`** — bumps `pyproject.toml` and relocks `uv.lock` in one PR (so the `--frozen` CI install stays green);
 - **`github-actions`** — the actions used in `.github/workflows/`;
 - **`docker`** — the pinned `uv` builder image in `addon/Dockerfile`.
+
+Updates are **not grouped** — one PR per package, so each bump is reviewable and revertable on its
+own. Work the monthly batch in one sitting: the `uv` PRs all rewrite `uv.lock`, and merging them
+back to back lets git's 3-way merge handle it (a PR that does go conflicting is fixed with a
+`@dependabot rebase` comment). Security updates ignore the schedule and open as soon as an advisory
+lands.
 
 The **one manual bump** is the HA base image (`ghcr.io/home-assistant/*-base-python:3.12-alpine3.24`):
 it's referenced via `ARG BUILD_FROM`, not a `FROM` literal, so Dependabot can't see it. When Home
