@@ -30,9 +30,21 @@ cp -R "$ROOT/src" "$OUT/src"
 find "$OUT/src" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
 # Context-local Dockerfile (COPY paths relative to the add-on dir; no ../).
-cat > "$OUT/Dockerfile" <<'DOCKER'
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.24
-FROM ghcr.io/astral-sh/uv:0.11.27 AS uv
+#
+# The two base-image lines are READ OUT of addon/Dockerfile instead of repeated here. Dependabot
+# bumps the uv pin there (docker ecosystem, /addon) and the HA base image is bumped by hand — and
+# neither can see this heredoc, so copies drift silently: the uv pin sat on 0.11.27 while the
+# published image already built with 0.12.10.
+ARG_LINE="$(sed -nE 's|^(ARG BUILD_FROM=.+)$|\1|p' "$ROOT/addon/Dockerfile" | head -1)"
+UV_LINE="$(sed -nE 's|^(FROM ghcr\.io/astral-sh/uv:.+ AS uv)$|\1|p' "$ROOT/addon/Dockerfile" | head -1)"
+if [ -z "$ARG_LINE" ] || [ -z "$UV_LINE" ]; then
+  echo "package-addon.sh: cannot read the ARG BUILD_FROM / uv builder lines from addon/Dockerfile" >&2
+  exit 1
+fi
+
+{
+printf '%s\n%s\n' "$ARG_LINE" "$UV_LINE"
+cat <<'DOCKER'
 FROM ${BUILD_FROM}
 LABEL org.opencontainers.image.title="EnOcean MQTT for Home Assistant" \
       org.opencontainers.image.description="EnOcean to MQTT bridge for Home Assistant (whole EEP range; first-class Eltako support)" \
@@ -59,7 +71,13 @@ RUN uv pip install --system --index-url https://pypi.org/simple/ --index-strateg
 WORKDIR /
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh
+# Healthcheck: the daemon process must be alive. Exec form (DL3025); the bracket in '[e]nocean2mqtt'
+# keeps the check from matching its own `sh -c pgrep -f …` command line. Keep in step with
+# addon/Dockerfile — a local Supervisor build should report health like the published image does.
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["/bin/sh", "-c", "pgrep -f '[e]nocean2mqtt' >/dev/null 2>&1"]
 CMD [ "/run.sh" ]
 DOCKER
+} > "$OUT/Dockerfile"
 
 echo "Staged self-contained add-on in: $OUT"
