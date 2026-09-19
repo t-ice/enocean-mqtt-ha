@@ -11,13 +11,13 @@
 - [[Troubleshooting]]
 - [[FAQ]]
 
-**Reference (in the repo)**
+**Reference**
 
-- [Architecture](https://github.com/t-ice/enocean-mqtt-ha/blob/master/docs/architecture.md)
-- [Testing](https://github.com/t-ice/enocean-mqtt-ha/blob/master/docs/testing.md)
-- [EEP spec compliance](https://github.com/t-ice/enocean-mqtt-ha/blob/master/docs/spec-compliance.md)
-- [ESP3 compliance](https://github.com/t-ice/enocean-mqtt-ha/blob/master/docs/esp3-compliance.md)
-- [Eltako coverage](https://github.com/t-ice/enocean-mqtt-ha/blob/master/docs/coverage.md)
+- [Architecture](https://t-ice.github.io/enocean-mqtt-ha/reference/architecture/)
+- [Testing](https://t-ice.github.io/enocean-mqtt-ha/reference/testing/)
+- [EEP spec compliance](https://t-ice.github.io/enocean-mqtt-ha/reference/spec-compliance/)
+- [ESP3 compliance](https://t-ice.github.io/enocean-mqtt-ha/reference/esp3-compliance/)
+- [Eltako coverage](https://t-ice.github.io/enocean-mqtt-ha/reference/coverage/)
 
 ---
 [Repo](https://github.com/t-ice/enocean-mqtt-ha) · [Issues](https://github.com/t-ice/enocean-mqtt-ha/issues)

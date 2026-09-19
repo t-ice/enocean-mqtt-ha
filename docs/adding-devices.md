@@ -95,4 +95,4 @@ No snapshots to regenerate. The guards that catch mistakes:
 - **`test_discovery_snapshot` / `test_discovery_build`** — the published HA discovery is correct.
 
 Then add the device to your `devices.yaml` (`eep: A5-02-30` or `model: eltako/…`) to see it appear in
-Home Assistant. See [`../wiki/Configuration-(devices.yaml).md`](../wiki/Configuration-(devices.yaml).md).
+Home Assistant. See [Configuration (devices.yaml)](../wiki/Configuration-(devices.yaml).md).

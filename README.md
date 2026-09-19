@@ -3,6 +3,7 @@
 [![CI](https://github.com/t-ice/enocean-mqtt-ha/actions/workflows/ci.yml/badge.svg)](https://github.com/t-ice/enocean-mqtt-ha/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/t-ice/enocean-mqtt-ha?sort=semver)](https://github.com/t-ice/enocean-mqtt-ha/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-t--ice.github.io-blue)](https://t-ice.github.io/enocean-mqtt-ha/)
 ![Architectures: aarch64 & amd64](https://img.shields.io/badge/arch-aarch64%20%7C%20amd64-informational)
 
 A Home Assistant add-on that bridges **EnOcean** devices to **MQTT** — decoding the whole EnOcean
@@ -19,8 +20,8 @@ endpoint over TCP (e.g. a Raspberry Pi hosting the stick).
 > **cover-position tracking that survives restarts**) and their Series-61/TF61 siblings — no
 > hand-written EEP templates. See **[Supported Eltako devices](#supported-eltako-devices)**.
 
-> **New here?** Start with the **[Wiki](https://github.com/t-ice/enocean-mqtt-ha/wiki)** — a
-> step-by-step [Getting Started](https://github.com/t-ice/enocean-mqtt-ha/wiki/Getting-Started) guide
+> **New here?** Start with the **[documentation](https://t-ice.github.io/enocean-mqtt-ha/)** — a
+> step-by-step [Getting Started](https://t-ice.github.io/enocean-mqtt-ha/getting-started/) guide
 > for non-technicians, plus configuration, Eltako setup, examples and troubleshooting.
 
 > Consolidates and builds on four upstream projects; see the Credits and License sections below for
@@ -81,7 +82,7 @@ the MQTT consumer; either side reconnecting does not tear down the other. See
 2. Point the add-on at your transceiver with **one of two** options: `device` (the local serial path,
    e.g. `/dev/ttyUSB0` — the add-on lists the available serial devices in its startup log) **or** `tcp`
    (a ser2net endpoint like `192.168.x.y:3000`; TCP wins if both are set). See the
-   [Raspberry Pi transceiver guide](https://github.com/t-ice/enocean-mqtt-ha/wiki/Raspberry-Pi-Transceiver)
+   [Raspberry Pi transceiver guide](https://t-ice.github.io/enocean-mqtt-ha/raspberry-pi-transceiver/)
    for the remote-stick setup.
 
    ![ser2net topology: the EnOcean USB stick on a Raspberry Pi is exposed by ser2net as a raw TCP port
@@ -145,7 +146,7 @@ Anything **not** in this list (other manufacturers, sensors, window handles, wea
 configured by its **EEP** instead of a model — e.g. the Hoppe **FHF** window handle (`eep: F6-10-00`)
 and the Eltako **FWG14MS** weather station (`eep: A5-13-01`). The full matrix, pairing steps (PCT14
 function groups), and devices still needing test data are in the
-[Supported Devices](https://github.com/t-ice/enocean-mqtt-ha/wiki/Supported-Devices) wiki page.
+[Supported Devices](https://t-ice.github.io/enocean-mqtt-ha/supported-devices/) page.
 
 ## Testing
 

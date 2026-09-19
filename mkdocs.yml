@@ -1,0 +1,77 @@
+# The published documentation site: https://t-ice.github.io/enocean-mqtt-ha/
+#
+# GitHub serves wiki pages with `x-robots-tag: none`, so the guides under wiki/ can never be found
+# by search engines. This site publishes the same sources as ordinary indexable HTML; `site_url`
+# is what makes MkDocs emit sitemap.xml and the canonical tags that go with it.
+#
+# docs_dir is generated: run `python tools/build_docs_site.py` first (CI and the docs workflow do).
+
+site_name: EnOcean MQTT for Home Assistant
+site_description: >-
+  Home Assistant add-on bridging EnOcean to MQTT — the full EEP range (F6/D5/A5/D2) with
+  first-class Eltako support (FSR14, FUD14, FSB14 covers) over a USB stick or remote ser2net.
+site_url: https://t-ice.github.io/enocean-mqtt-ha/
+site_author: Christian Theis
+copyright: Copyright &copy; 2024–2026 Christian Theis — GPLv3
+
+repo_url: https://github.com/t-ice/enocean-mqtt-ha
+repo_name: t-ice/enocean-mqtt-ha
+# The pages are generated into build/docs-site, so "edit this page" would point at paths that only
+# exist after a build. Material hides the button when edit_uri is empty.
+edit_uri: ""
+
+docs_dir: build/docs-site
+site_dir: site
+strict: true
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Guides:
+      - Getting started: getting-started.md
+      - Configuration (devices.yaml): configuration.md
+      - Eltako setup: eltako-setup.md
+      - Raspberry Pi transceiver: raspberry-pi-transceiver.md
+      - Teach-in: teach-in.md
+      - Supported devices: supported-devices.md
+      - Examples: examples.md
+      - Troubleshooting: troubleshooting.md
+      - FAQ: faq.md
+  - Reference:
+      - Architecture: reference/architecture.md
+      - Adding devices: reference/adding-devices.md
+      - EEP spec compliance: reference/spec-compliance.md
+      - ESP3 compliance: reference/esp3-compliance.md
+      - Eltako coverage: reference/coverage.md
+      - Testing: reference/testing.md
+      - Development: reference/development.md
