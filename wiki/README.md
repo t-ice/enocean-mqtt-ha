@@ -1,8 +1,18 @@
 # Wiki source
 
-These markdown files are the source for the project's **GitHub Wiki** — the home for all
-**user-facing documentation**. GitHub serves wikis from a separate git repository
-(`<repo>.wiki.git`), so they aren't published just by living here; publish them with:
+These markdown files are the source for the project's **user-facing documentation**, published to
+**two** places:
+
+1. **The documentation site**, <https://t-ice.github.io/enocean-mqtt-ha/> — built from these files
+   plus `docs/` by `tools/build_docs_site.py` + `mkdocs.yml`, deployed automatically by
+   `.github/workflows/docs.yml` on every push to `master`. **This is the copy search engines can
+   see**: GitHub serves wiki pages with `x-robots-tag: none`, so the wiki itself is never indexed.
+2. **The GitHub Wiki**, which needs the manual push below.
+
+Editing rule: change the files *here*. The site follows on its own; the wiki needs the push.
+
+GitHub serves wikis from a separate git repository (`<repo>.wiki.git`), so they aren't published
+just by living here; publish them with:
 
 ```bash
 # 1. Enable the Wiki: repo → Settings → Features → Wikis (tick it), then create any page once

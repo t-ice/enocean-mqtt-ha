@@ -45,6 +45,8 @@ dev = [
     "pre-commit>=4.6.2",
     "yamllint>=1.35",
     "vulture>=2.11",
+    # Builds the documentation site (see mkdocs.yml + tools/build_docs_site.py).
+    "mkdocs-material>=9.5",
 ]
 
 [project.scripts]
@@ -53,6 +55,7 @@ enocean2mqtt = "enocean2mqtt.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/t-ice/enocean-mqtt-ha"
+Documentation = "https://t-ice.github.io/enocean-mqtt-ha/"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/enocean2mqtt"]

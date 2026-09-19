@@ -1,0 +1,56 @@
+name: Docs
+
+# Publishes the documentation site to GitHub Pages (https://t-ice.github.io/enocean-mqtt-ha/).
+# The pages are generated from wiki/ + docs/ — see tools/build_docs_site.py and mkdocs.yml.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "wiki/**"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "tools/build_docs_site.py"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time, and never cancel a running one — a half-published site is worse than a
+# slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install (frozen)
+        run: uv sync --frozen --extra dev
+      - name: Assemble the MkDocs sources (wiki/ + docs/)
+        run: uv run python tools/build_docs_site.py
+      - name: Build the site
+        run: uv run mkdocs build --strict
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write         # publish to Pages
+      id-token: write      # OIDC token deploy-pages exchanges for the deployment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

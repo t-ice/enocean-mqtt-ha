@@ -27,6 +27,11 @@ jobs:
         run: uv run mypy
       - name: Pytest (with coverage gate)
         run: uv run pytest -q --cov=src/enocean2mqtt --cov-report=term-missing
+      - name: Docs site (wiki links + MkDocs build)
+        # Catches a broken wiki link or nav entry in the PR instead of in the Pages deployment.
+        run: |
+          uv run python tools/build_docs_site.py
+          uv run mkdocs build --strict
 
   shell:
     runs-on: ubuntu-latest
