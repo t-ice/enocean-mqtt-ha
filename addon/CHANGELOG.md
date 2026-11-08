@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.8 — dependency refresh, documentation now searchable
+
+- **Docs:** The user guides (Getting Started, Eltako setup, Supported devices, Troubleshooting) are
+  now also published as an indexable website at <https://t-ice.github.io/enocean-mqtt-ha/>. GitHub
+  hides wiki pages from search engines, so until now they could only be found from inside the repo.
+- Dependency refresh: the pinned `uv` builder image for the add-on build moves to 0.13.6; the rest
+  (`ruff` 0.17.3, `mypy` 2.4.1, `pre-commit` 4.7.0, `mkdocs-material` 9.8.0, `types-pyyaml`,
+  `github/codeql-action` 4.39.1) are dev/CI tooling with no effect on the shipped add-on. No
+  behaviour change and no user action needed.
+
 ## 1.0.7 — the container healthcheck actually reports a dead daemon now
 
 - **Fix:** The add-on's healthcheck never worked, and always reported healthy. It ran
