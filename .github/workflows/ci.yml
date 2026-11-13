@@ -66,6 +66,9 @@ jobs:
           path: "./addon"
 
   addon-build:
+    # Fixed check name per arch (without runner/base image), so the branch ruleset can require it
+    # without breaking whenever the base image is bumped.
+    name: addon-build (${{ matrix.arch }})
     # Each arch builds on its own native runner (aarch64 uses the free public arm64 runner), so no QEMU
     # emulation is needed — faster and faithful to the shipped image.
     runs-on: ${{ matrix.runner }}
