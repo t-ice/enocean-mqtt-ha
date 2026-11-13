@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.9 — window handles (F6-10-00) report their real position
+
+- **Fix:** Window handles using EEP `F6-10-00` (e.g. Hoppe SecuSignal / FHF) never showed the right
+  state in Home Assistant: `state_2p` was always "open" and `state_3p` always `on`, no matter how
+  the handle was turned. The bridge decoded the telegrams correctly and published the raw handle
+  byte (`WIN` = 240 / 224 / 208), but the discovery templates compared it against `3` and `1` and
+  so never matched. Both entities now evaluate the handle position properly: handle down = closed,
+  horizontal (either side) = open, up = tilt. (#49)
+- **Changed:** `state_3p` now reports `closed` / `tilt` / `open` instead of `off` / `tilt` / `on`,
+  the same wording the A5 window contacts use. Since the entity could only ever show `on` before,
+  no working automation depends on the old values — but if you built a workaround on them, adjust
+  it.
+
 ## 1.0.8 — dependency refresh, documentation now searchable
 
 - **Docs:** The user guides (Getting Started, Eltako setup, Supported devices, Troubleshooting) are
