@@ -47,8 +47,9 @@ Notes:
 Eltako Series-14/61 actuators (FSR14/FSB14/FUD14/…) are commanded from a `sender = base_id + offset`,
 and each actuator channel must first learn that sender:
 
-1. Give the device a unique `sender` in your `devices.yaml` — or write `sender: auto` and let the
-   add-on pick a free one at the next start (it is written back into the file; see [[Eltako Setup]]).
+1. Give the device a unique `sender` in your `devices.yaml` — or, from version 1.1.0, write `sender: auto`
+   and let the add-on pick a free one at the next start (it is written back into the file; see
+   [[Eltako Setup]]).
    The daemon logs an **error at startup if two devices share a sender** (a hard-to-debug failure).
 2. Put the actuator into LRN mode (rotary switch or PCT14).
 3. Press the device's HA **pairing** button — the add-on emits the learn telegram from `sender`.
