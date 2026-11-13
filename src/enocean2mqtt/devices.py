@@ -72,6 +72,15 @@ def eep_to_rft(eep: str) -> tuple[int, int, int]:
     return int(m.group(1), 16), int(m.group(2), 16), int(m.group(3), 16)
 
 
+# devices.yaml value asking the bridge to pick a free sender address once and write it back.
+AUTO_SENDER = "auto"
+
+
+def is_auto_sender(value) -> bool:
+    """True for ``sender: auto`` (any case, surrounding blanks ignored)."""
+    return isinstance(value, str) and value.strip().lower() == AUTO_SENDER
+
+
 def _coerce(key: str, value):
     if key in STRING_KEYS:
         return str(value)
@@ -122,6 +131,11 @@ def device_to_sensor(device: dict, mqtt_prefix: str) -> Sensor:
         if key == "eep":
             rorg, func, type_ = eep_to_rft(str(value))
             sensor["rorg"], sensor["func"], sensor["type"] = rorg, func, type_
+            continue
+        if key == "sender" and is_auto_sender(value):
+            # Resolved after the transceiver reported its Base ID (see the HA bridge). The bare name
+            # is kept so the assigned address can be written back to exactly this entry.
+            sensor["sender_auto"] = str(device["name"])
             continue
         coerced = _coerce(key, value)
         if key in ("address", "sender") and not 0 <= coerced <= 0xFFFFFFFF:
@@ -212,3 +226,44 @@ def append_device_to_yaml(devices_yaml_path: str, entry: dict) -> bool:
         ryaml.dump(doc, fh)
     os.replace(tmp, devices_yaml_path)  # atomic
     return True
+
+
+def _load_roundtrip(devices_yaml_path: str):
+    """(ruamel instance, parsed document) for a comment-preserving edit of devices.yaml."""
+    from ruamel.yaml import YAML
+
+    ryaml = YAML()  # round-trip mode: keeps comments + formatting
+    ryaml.preserve_quotes = True
+    ryaml.indent(mapping=2, sequence=2, offset=0)
+    with open(devices_yaml_path, encoding="utf-8") as fh:
+        return ryaml, ryaml.load(fh)
+
+
+def set_auto_sender_in_yaml(devices_yaml_path: str, name: str, address: int, sender: int) -> bool:
+    """Replace ``sender: auto`` of one device with a fixed address. Returns True if written.
+
+    The entry is matched by its (bare) ``name`` + ``address`` and must still say ``auto`` — a
+    sender the user fixed in the meantime is never overwritten. Comments and formatting are
+    preserved, and the write is atomic (temp file + rename), so a crash can't truncate the file.
+    Raises ``OSError`` if the file can't be read or written.
+    """
+    from ruamel.yaml.scalarint import HexCapsInt
+
+    ryaml, doc = _load_roundtrip(devices_yaml_path)
+    devices = doc.get("devices", []) if isinstance(doc, dict) else (doc or [])
+    for d in devices:
+        if not isinstance(d, dict) or str(d.get("name")) != name:
+            continue
+        try:
+            same_address = int(str(d.get("address", "")), 0) == address
+        except (TypeError, ValueError):
+            continue
+        if not same_address or not is_auto_sender(d.get("sender")):
+            continue
+        d["sender"] = HexCapsInt(sender, width=8)  # rendered as 0xFFAE7C81, like a hand-written one
+        tmp = devices_yaml_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            ryaml.dump(doc, fh)
+        os.replace(tmp, devices_yaml_path)  # atomic
+        return True
+    return False

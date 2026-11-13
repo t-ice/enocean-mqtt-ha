@@ -76,6 +76,9 @@ class SensorExpander:
                 new_sens["default_data"] = cur_model.get("default_data")
             if cur_model.get("sender"):
                 new_sens["sender"] = cur_model.get("sender")
+            # 'sender: auto' — every derived sensor waits for (and later shares) the one address.
+            if cur_model.get("sender_auto"):
+                new_sens["sender_auto"] = cur_model.get("sender_auto")
             if cur_model.get("ignore"):
                 new_sens["ignore"] = cur_model.get("ignore")
             # Pass the configured shutter run time on so the daemon can compute the cover position.

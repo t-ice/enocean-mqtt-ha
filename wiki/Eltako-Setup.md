@@ -16,11 +16,45 @@ actuator you pick a **unique** `sender` = Base ID **+** a small offset:
 
 Use a different offset per actuator (`…81`, `…82`, `…83`, …). Never reuse a `sender`.
 
-> **The offset has a limit.** A transceiver can only transmit from its **Base ID + 1 … 127**
-> (`0x01`–`0x7F`) — 128 addresses in total. Keep offsets in that range; a large or arbitrary value is
-> not a valid sender. And the `sender` is **not** the actuator's own address and **not** the chip ID a
+> **The offset has a limit.** A transceiver can only transmit from its **Base ID + 0 … 127** — 128
+> addresses in total. Offset 0 is the Base ID itself (used for devices without a `sender`), so pick
+> offsets **1 … 127** (`0x01`–`0x7F`) for your actuators. A large or arbitrary value is not a valid
+> sender — the add-on warns at startup about every `sender` outside the range. And the `sender` is **not** the actuator's own address and **not** the chip ID a
 > wall switch broadcasts — it is a *new* address (belonging to your stick) that you teach the actuator
 > to obey. See [[Base ID vs Chip ID|FAQ]].
+
+## Let the add-on pick the sender (`sender: auto`)
+
+Don't want to keep track of the offsets yourself? Write `auto` instead of an address:
+
+```yaml
+  - name: Rollo_Wohnzimmer
+    address: 0xFF94CE9C
+    model: eltako/fsb14
+    sender: auto             # the add-on picks a free address once
+    shut_time: 64
+```
+
+1. Restart the add-on. It picks the next free address and **writes it into your `devices.yaml`**,
+   replacing `auto` (your comments and formatting are kept). The entry then looks exactly like a
+   hand-written one, e.g. `sender: 0xFFAE7C86`.
+2. Read the address from the add-on **Log** — look for
+   `Assigned sender 0xFFAE7C86 to Rollo_Wohnzimmer` — or from your `devices.yaml`. If the file is
+   open in an editor, reload it before you edit it again, otherwise you overwrite the new address.
+3. Pair the actuator with that address as described below (PCT14 or the pairing button).
+
+How the address is chosen — and why:
+
+- It is assigned **once** and never changes afterwards: from then on it is an ordinary fixed
+  `sender` in your file. Devices that already have a `sender` are never touched.
+- It is always **one above the highest address ever used** (by any device, including ones you have
+  since removed). Gaps are deliberately **not** filled: an actuator you deleted from `devices.yaml`
+  still obeys its old sender, and handing that address to a new device would switch both.
+- Until the address is saved to `devices.yaml`, the device stays **inactive** (no entities, no
+  commands). That is the case if the file is read-only or the stick didn't report its Base ID — see
+  [[Troubleshooting]].
+
+`sender: auto` only picks the address. Teaching it into the actuator stays a manual step.
 
 ## Pair with PCT14 (recommended)
 
@@ -55,8 +89,8 @@ appears as an `ID (Hex)` entry in the module's function group (the one from the 
 
 1. Put the actuator into its own pairing mode (e.g. an **FSB61**: lower rotary to **MAX**, upper to
    **LRN** — the LED blinks).
-2. Add the device to `devices.yaml` and restart, then open its device page in Home Assistant and
-   press the **pairing** button entity.
+2. Add the device to `devices.yaml` (with a fixed `sender` or `sender: auto`) and restart, then open
+   its device page in Home Assistant and press the **pairing** button entity.
 3. Turn learning off again afterwards.
 
 ## Then add it to devices.yaml

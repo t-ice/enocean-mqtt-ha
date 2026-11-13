@@ -34,7 +34,7 @@ share, then restart the add-on. One entry per device:
 | `address` | The device's own EnOcean ID, e.g. `0x059ED79A`. | Always |
 | `eep` | An EnOcean profile like `A5-13-01`. For sensors, handles, weather, contacts… | Sensors |
 | `model` | An Eltako model like `eltako/fsb14`. | Eltako actuators |
-| `sender` | Your stick's Base ID **+ a unique offset** per device. | With `model` |
+| `sender` | Your stick's Base ID **+ a unique offset** (1–127) per device — or `auto` to let the add-on pick a free one once and write it back into this file (see [[Eltako Setup]]). | With `model` |
 | `shut_time` | Seconds for a full open→close. | Covers/blinds |
 | `security` | `true` to decode this device's **secure** (AES/VAES) telegrams. Requires `key`. | Secure devices |
 | `key` | The device's 16-byte AES key as **32 hex chars**. | With `security` |

@@ -36,10 +36,26 @@ transmit-failures counter as diagnostic sensors.
 
 **"What's the difference between Chip ID and Base ID — and which one is the `sender`?"**
 The **Chip ID** is the stick's fixed, unique factory identity. The **Base ID** is a separate,
-(re-)writable range the stick may **transmit** from: its Base ID plus an offset of **1–127** (128
-addresses total). A device's `sender` is always **Base ID + offset** — never the Chip ID, never the
+(re-)writable range the stick may **transmit** from: its Base ID plus an offset of **0–127** (128
+addresses; offset 0 is the Base ID itself, your actuators use **1–127**). A device's `sender` is always **Base ID + offset** — never the Chip ID, never the
 actuator's own address, and never the ID a wall switch broadcasts. When you pair an actuator you teach
 it that `sender` address to obey. See [[Eltako Setup]].
+
+**"Do I have to pick the `sender` addresses myself?"**
+No — write `sender: auto` and the add-on picks a free one at the next start, writes it into your
+`devices.yaml` and shows it in the log. You still have to teach it into the actuator. See
+[[Eltako Setup]].
+
+**"I removed a device. Does `sender: auto` give its address to the next new device?"**
+No, on purpose. The removed actuator still obeys its old sender, so re-using it would switch both. New
+addresses are always above the highest one ever used; with 127 of them that is rarely a limit. If you
+really want an old address back, write it as a fixed `sender` yourself.
+
+**"What happens to the senders when I replace the USB stick?"**
+A new stick has a different Base ID, so **all** existing `sender` addresses become invalid — the
+add-on warns about each one at startup (*"outside this transceiver's range"*). Either re-pair the
+actuators with senders from the new range, or write the old Base ID to the new stick (possible only a
+few times per stick). This is the same with hand-picked and automatic senders.
 
 **"Can I use this without Mosquitto?"**
 No — an MQTT broker (Mosquitto or another) is required; it's how the add-on talks to Home Assistant.

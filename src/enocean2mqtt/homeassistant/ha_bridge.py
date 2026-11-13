@@ -20,7 +20,8 @@ import enocean2mqtt.protocol.utils
 from enocean2mqtt.adapters.store.sqlite_store import SqliteDeviceStore
 from enocean2mqtt.application.daemon import _BASE_ID_TIMEOUT, EnoceanDaemon
 from enocean2mqtt.config import as_bool
-from enocean2mqtt.devices import append_device_to_yaml
+from enocean2mqtt.devices import append_device_to_yaml, set_auto_sender_in_yaml
+from enocean2mqtt.domain import sender_pool
 from enocean2mqtt.domain.config import Config
 from enocean2mqtt.domain.sensor import Sensor
 from enocean2mqtt.homeassistant.cover import (
@@ -108,6 +109,12 @@ class HomeAssistantBridge:
 
         self._first_mqtt_connect = True
         self._system_status_topic: dict = {}
+        # 'sender: auto' bookkeeping: assignments still to announce over MQTT, sensors assigned
+        # after discovery already ran (late Base ID), and the task waiting for that late Base ID.
+        self._sender_announcements: list[dict] = []
+        self._late_assigned: list[Sensor] = []
+        self._late_sender_task = None
+        self._sender_range_checked = False
         self._learn_timer = None
 
         # Compose the base daemon and register this bridge as its lifecycle overlay.
@@ -179,10 +186,178 @@ class HomeAssistantBridge:
                 await asyncio.wait_for(self._daemon.base_id_ready.wait(), timeout=_BASE_ID_TIMEOUT)
             except TimeoutError:
                 logger.warning("Base ID not received within %ss; proceeding", _BASE_ID_TIMEOUT)
+        if self._daemon.enocean_sender is not None:
+            # Queued for _flush_sender_updates: on a reconnect discovery has already run, so a
+            # device assigned only now would otherwise never be announced.
+            self._late_assigned.extend(self._resolve_senders())
+        elif self._pending_auto_sensors() and self._late_sender_task is None:
+            # No Base ID yet: 'sender: auto' devices stay unassigned (no discovery, no sending)
+            # and are picked up as soon as the transceiver identifies itself.
+            logger.warning(
+                "No Base ID yet — devices with 'sender: auto' stay inactive until it is known"
+            )
+            self._late_sender_task = asyncio.create_task(self._resolve_senders_when_ready())
+
+    # =============================================================================================
+    # SENDER IDs ('sender: auto' + range check)
+    # =============================================================================================
+    def _pending_auto_sensors(self):
+        """Sensors of 'sender: auto' devices that have no address yet."""
+        return [s for s in self._daemon.sensors if s.sender_auto and s.sender is None]
+
+    def _resolve_senders(self):
+        """With the Base ID known: warn about out-of-range senders, then assign the 'auto' ones."""
+        base_id = enocean2mqtt.protocol.utils.combine_hex(self._daemon.enocean_sender)
+        if not self._sender_range_checked:
+            self._sender_range_checked = True
+            self._warn_out_of_range_senders(base_id)
+        return self._assign_auto_senders(base_id)
+
+    def _warn_out_of_range_senders(self, base_id):
+        """Log every configured sender this transceiver cannot transmit from (once per device)."""
+        seen = set()
+        for sensor in self._daemon.sensors:
+            sender = sensor.sender
+            if sender is None or sensor.ignore or sender_pool.in_range(base_id, sender):
+                continue
+            key = (sensor.address, sender)
+            if key in seen:  # a model device expands into several sensors sharing one sender
+                continue
+            seen.add(key)
+            logger.warning(
+                "Sender 0x%08X of %s is outside this transceiver's range 0x%08X-0x%08X "
+                "(Base ID + 0..%d) — the device will most likely not react. "
+                "Was the stick replaced?",
+                sender,
+                sensor.name,
+                base_id,
+                base_id + sender_pool.MAX_OFFSET,
+                sender_pool.MAX_OFFSET,
+            )
+
+    def _assign_auto_senders(self, base_id):
+        """Give every pending 'sender: auto' device a fresh address and write it to devices.yaml.
+
+        An address counts as assigned only once it is saved in devices.yaml — that file is what
+        keeps it stable across restarts. If it can't be saved the device stays inactive rather
+        than being taught an address that may differ on the next start. Returns the sensors that
+        received an address.
+        """
+        sensors = self._daemon.sensors
+        # Remember the senders in use right now, so a device removed later never frees its address.
+        self._devmgr.set_sender_high_water(
+            base_id, sender_pool.highest_offset(base_id, (s.sender for s in sensors))
+        )
+        # One devices.yaml entry = one address, even if it expanded into several sensors.
+        groups: dict[tuple, list] = {}
+        for sensor in self._pending_auto_sensors():
+            groups.setdefault((sensor.sender_auto, sensor.address), []).append(sensor)
+        if not groups:
+            return []
+
+        device_file = self._daemon.conf.get("device_file")
+        assigned = []
+        for (bare_name, address), members in groups.items():
+            candidates = sender_pool.next_senders(
+                base_id,
+                (s.sender for s in sensors),
+                self._devmgr.get_sender_high_water(base_id),
+                1,
+            )
+            if not candidates:
+                logger.error(
+                    "No free sender left for %s: all %d addresses above the highest one ever used "
+                    "are taken (addresses of removed devices are never re-used). Set a fixed "
+                    "'sender' in devices.yaml instead.",
+                    bare_name,
+                    sender_pool.MAX_OFFSET,
+                )
+                continue
+            sender = candidates[0]
+            if not self._save_auto_sender(device_file, bare_name, address, sender):
+                continue
+            for member in members:
+                member["sender"] = sender
+                del member["sender_auto"]
+            assigned.extend(members)
+            self._devmgr.set_sender_high_water(base_id, sender - base_id)
+            self._sender_announcements.append({"name": bare_name, "sender": f"0x{sender:08X}"})
+            logger.warning(
+                "Assigned sender 0x%08X to %s and saved it to devices.yaml — teach this address "
+                "into the actuator now.",
+                sender,
+                bare_name,
+            )
+        return assigned
+
+    @staticmethod
+    def _save_auto_sender(device_file, bare_name, address, sender):
+        """Write the assigned sender to devices.yaml; False (with a logged reason) if not saved."""
+        if not device_file:
+            logger.error(
+                "Cannot assign a sender to %s: no devices.yaml path is known to save it to.",
+                bare_name,
+            )
+            return False
+        try:
+            saved = set_auto_sender_in_yaml(device_file, bare_name, address, sender)
+        except Exception as exc:  # unreadable/unwritable file, or YAML that no longer parses
+            logger.error(
+                "Cannot assign a sender to %s: saving it to %s failed (%s). The device stays "
+                "inactive; fix the file or set a fixed 'sender'.",
+                bare_name,
+                device_file,
+                exc,
+            )
+            return False
+        if not saved:
+            logger.error(
+                "Cannot assign a sender to %s: its 'sender: auto' entry was not found in %s "
+                "(changed while running?). The device stays inactive until the next start.",
+                bare_name,
+                device_file,
+            )
+        return saved
+
+    async def _resolve_senders_when_ready(self):
+        """Late Base ID: assign the waiting 'sender: auto' devices once the transceiver answers."""
+        await self._daemon.base_id_ready.wait()
+        try:
+            self._late_assigned.extend(self._resolve_senders())
+            await self._flush_sender_updates()
+        except Exception:
+            # Nobody awaits this background task, so an error would vanish without a trace.
+            logger.exception("Assigning the 'sender: auto' devices failed")
+
+    async def _flush_sender_updates(self):
+        """Publish what a sender assignment owes MQTT: late discovery + the assignment notice.
+
+        No-op until the first broker connect has run its discovery; ``after_connect`` calls this
+        again at its end, so nothing assigned in between is lost.
+        """
+        if self._first_mqtt_connect:
+            return
+        late, self._late_assigned = self._late_assigned, []
+        discovered = set()
+        for sensor in late:
+            dev_uid, db_name, discover = self._discovery_identity(sensor)
+            if dev_uid in discovered:
+                continue
+            discovered.add(dev_uid)
+            sensor_db = self._devmgr.db_get_device_by_field("name", db_name)
+            await discover(sensor, sensor_db.get("cfgtopics", None) if sensor_db else None)
+        announcements, self._sender_announcements = self._sender_announcements, []
+        for announcement in announcements:
+            await self._daemon.publish(
+                self._daemon.conf.mqtt_prefix + "bridge/last_assigned_sender",
+                json.dumps(announcement),
+                retain=True,
+            )
 
     async def after_connect(self):
         """On the first broker connect only: run discovery + publish the LEARN button and covers."""
         if not self._first_mqtt_connect:
+            await self._flush_sender_updates()  # senders assigned since the last connect
             return
         await self._sync_sensor_discovery()
         if self._daemon.enocean_sender is None:
@@ -206,6 +381,7 @@ class HomeAssistantBridge:
         await self._publish_cover_shut_times()
         await self._publish_cover_positions()
         self._first_mqtt_connect = False
+        await self._flush_sender_updates()
 
     async def intercept_inbound(self, topic, payload) -> bool:
         """Claim system + discovery-delete topics; return True if handled (base skips dispatch)."""
@@ -265,6 +441,10 @@ class HomeAssistantBridge:
         discovered_uids = set()
         for sensor in self._daemon.sensors:
             if sensor.ignore:
+                continue
+            # A 'sender: auto' device without its address yet: the sender is part of the unique
+            # id, so announcing it now ("…_NONE") would leave orphaned entities once it is assigned.
+            if sensor.sender_auto and sensor.sender is None:
                 continue
             dev_uid, db_name, discover = self._discovery_identity(sensor)
             # A model device expands into one sensor per RORG (e.g. Eltako /a5 + /f6) that share one

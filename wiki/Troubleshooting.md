@@ -77,6 +77,27 @@ itself. Work through this in order:
    change*, so a freshly added entity has no state until you actually press the button / open the
    window / move the blind. That is expected — not a configuration error.
 
+## Sender problems: an actuator doesn't react / `sender: auto` isn't replaced
+
+The add-on checks the `sender` addresses at startup. Search the **Log** for these messages:
+
+| Log message | Meaning | What to do |
+|---|---|---|
+| `Assigned sender 0x… to <name> and saved it to devices.yaml` | A `sender: auto` device got its address. | Teach this address into the actuator ([[Eltako Setup]]). |
+| `Sender 0x… of <name> is outside this transceiver's range` | The address isn't Base ID + 0…127 of the connected stick, so the device will most likely not react. | Typo in the `sender`? Or the stick was replaced — see the [[FAQ]]. |
+| `Duplicate sender 0x… used by multiple devices` | Two entries share one address; both actuators react to each command. | Give each device its own `sender`. |
+| `Cannot assign a sender to <name>: saving it to … failed` | `devices.yaml` couldn't be written (read-only, or no longer valid YAML). The device stays inactive. | Fix the file/permissions and restart, or set a fixed `sender`. |
+| `No Base ID yet — devices with 'sender: auto' stay inactive` | The stick didn't answer in time. Assignment happens as soon as it does. | If it never does, see *"Waiting for device base ID"* above. |
+| `No free sender left for <name>` | All addresses above the highest one ever used are taken. | Set a fixed `sender` (a free offset you know is unused). |
+| `Not sending to <name>: its automatic sender has not been assigned yet` | A command was sent to a `sender: auto` device that has no address yet. | Resolve the cause shown by one of the messages above. |
+
+A device with an unresolved `sender: auto` creates **no entities** until the address is assigned —
+that is intentional: the sender is part of the entity's unique id, so announcing it earlier would
+leave orphaned entities behind.
+
+The last assignment is also published (retained) on `<prefix>bridge/last_assigned_sender` as
+`{"name": "…", "sender": "0x…"}`.
+
 ## Some commands are ignored when triggering many devices at once
 
 Firing e.g. `cover.close_cover` at many covers in one automation can drop telegrams: an EnOcean ERP1

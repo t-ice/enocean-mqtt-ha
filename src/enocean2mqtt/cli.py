@@ -144,6 +144,15 @@ def main():
     for sender, names in duplicate_senders(sensors).items():
         logger.error("Duplicate sender 0x%08X used by multiple devices: %s", sender, names)
 
+    # 'sender: auto' is resolved by the Home Assistant overlay; without it nothing assigns one.
+    if str(conf.get("overlay") or "").lower() != "ha":
+        for name in sorted({s.get("sender_auto") for s in sensors if s.get("sender_auto")}):
+            logger.error(
+                "Device %s uses 'sender: auto', which needs the Home Assistant overlay — it will "
+                "not send. Set a fixed 'sender'.",
+                name,
+            )
+
     # Warn about duplicate (address, RORG): only the first such device receives telegrams.
     for (address, _rorg), names in duplicate_addresses(sensors).items():
         logger.warning(
