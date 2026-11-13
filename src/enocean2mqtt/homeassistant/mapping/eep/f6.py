@@ -109,8 +109,11 @@ MAPPING = {
             0: {
                 'device_config': dcfg(),
                 'entities': [
-                    binary('state_2p', '{% if value_json.WIN == 3 %}OFF{% else %}ON{% endif %}', device_class='window'),
-                    sensor('state_3p', '{% if value_json.WIN == 3 %}off{% elif value_json.WIN == 1 %}tilt{% else %}on{% endif %}'),
+                    # WIN is the raw RPS data byte; the handle position is its high nibble
+                    # (0xF_ = down/closed, 0xD_ = up/tilt, 0xC_ / 0xE_ = left/right/open).
+                    # Anything else renders empty, which HA ignores (state is kept).
+                    binary('state_2p', '{% set p = value_json.WIN | int(0) // 16 %}{% if p == 15 %}OFF{% elif p in (12, 13, 14) %}ON{% endif %}', device_class='window'),
+                    sensor('state_3p', '{% set p = value_json.WIN | int(0) // 16 %}{% if p == 15 %}closed{% elif p == 13 %}tilt{% elif p in (12, 14) %}open{% endif %}'),
                 ],
             },
             1: {
