@@ -69,7 +69,7 @@ add-on or a Samba share. Every entry needs a **name**, an **address**, and **eit
 | `address` | The device's own ID, e.g. `0x059ED79A`. | Always |
 | `eep` | An EnOcean profile like `A5-13-01`. | Sensors |
 | `model` | An Eltako model like `eltako/fsb14`. | Eltako actuators |
-| `sender` | Your Base ID + a unique offset per device. | With `model` |
+| `sender` | Your Base ID + a unique offset (1–127) per device, or `auto` to let the add-on pick one. | With `model` |
 | `shut_time` | Seconds for a full open→close. | Covers/blinds |
 
 ```yaml

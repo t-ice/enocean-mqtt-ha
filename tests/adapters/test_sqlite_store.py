@@ -110,3 +110,19 @@ def test_corrupt_legacy_json_is_backed_up_not_fatal(tmp_path):
     s = SqliteDeviceStore({"db_file": str(legacy)})  # must not raise
     assert s.db_list_from_fields("uid") == []
     assert list(tmp_path.glob("enocean2mqtt_db.json.corrupt.*"))  # backed up
+
+
+def test_sender_high_water_only_grows_and_is_per_base_id(tmp_path):
+    from enocean2mqtt.adapters.store.sqlite_store import SqliteDeviceStore
+
+    path = str(tmp_path / "db.sqlite")
+    store = SqliteDeviceStore({"db_file": path})
+    base, other = 0xFFAE7C80, 0xFF112200
+    assert store.get_sender_high_water(base) == 0  # nothing remembered yet
+    store.set_sender_high_water(base, 9)
+    store.set_sender_high_water(base, 4)  # a lower value never lowers the mark
+    assert store.get_sender_high_water(base) == 9
+    assert store.get_sender_high_water(other) == 0
+
+    # Survives a restart (new connection on the same file).
+    assert SqliteDeviceStore({"db_file": path}).get_sender_high_water(base) == 9

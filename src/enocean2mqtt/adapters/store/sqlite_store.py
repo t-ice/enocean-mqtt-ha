@@ -50,6 +50,11 @@ class SqliteDeviceStore:
             "  uid TEXT PRIMARY KEY, address INTEGER, name TEXT, doc TEXT NOT NULL)"
         )
 
+        # Small key/value side table for bridge-wide facts that belong to no single device.
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+
         # One-time migration from the legacy TinyDB json.
         if legacy_json and os.path.isfile(legacy_json) and self._is_empty():
             self._migrate_from_tinydb(legacy_json)
@@ -181,6 +186,26 @@ class SqliteDeviceStore:
                 if rlc_snd is not None:
                     device["rlc_snd"] = rlc_snd
                 self._write(device)
+
+    def get_sender_high_water(self, base_id):
+        """Highest sender offset ever in use for this Base ID (0 if nothing is remembered)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM meta WHERE key = ?", (f"sender_high_water/{base_id:08X}",)
+            ).fetchone()
+        try:
+            return int(row[0]) if row else 0
+        except (TypeError, ValueError):
+            return 0
+
+    def set_sender_high_water(self, base_id, offset):
+        """Remember the highest sender offset in use; it only ever grows (per Base ID)."""
+        with self._lock:
+            if offset > self.get_sender_high_water(base_id):
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                    (f"sender_high_water/{base_id:08X}", str(int(offset))),
+                )
 
     def db_add_device(self, sensor, uid, attr_name=None, attr=None):
         """Add new device to the database"""

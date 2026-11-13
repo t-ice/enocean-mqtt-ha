@@ -134,3 +134,31 @@ def test_setup_logging_uses_rotating_file_handler(tmp_path, monkeypatch):
         for h in root.handlers:
             h.close()
         root.handlers = saved
+
+
+def test_main_flags_auto_sender_without_ha_overlay(monkeypatch, caplog):
+    # 'sender: auto' is resolved by the HA overlay only; standalone it must be reported.
+    _run_main(monkeypatch, overlay="none")
+    sensors = [{"name": "e/x", "sender_auto": "x"}, {"name": "e/y", "sender": 1}]
+    cfg = {"overlay": "none", "mqtt_host": "x", "enocean_port": "socket://127.0.0.1:3000"}
+    monkeypatch.setattr(cli, "load_config_file", lambda _c: (sensors, cfg))
+    monkeypatch.setattr(
+        "enocean2mqtt.application.bootstrap.EnoceanDaemon", mock.Mock(return_value=mock.Mock())
+    )
+    with caplog.at_level("ERROR"):
+        cli.main()
+    assert "Device x uses 'sender: auto'" in caplog.text
+
+
+def test_main_accepts_auto_sender_with_ha_overlay(monkeypatch, caplog):
+    _run_main(monkeypatch, overlay="ha")
+    sensors = [{"name": "e/x", "sender_auto": "x"}]
+    cfg = {"overlay": "ha", "mqtt_host": "x", "enocean_port": "socket://127.0.0.1:3000"}
+    monkeypatch.setattr(cli, "load_config_file", lambda _c: (sensors, cfg))
+    monkeypatch.setattr(
+        "enocean2mqtt.homeassistant.ha_bridge.HomeAssistantBridge",
+        mock.Mock(return_value=mock.Mock()),
+    )
+    with caplog.at_level("ERROR"):
+        cli.main()
+    assert "sender: auto" not in caplog.text

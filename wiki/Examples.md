@@ -29,6 +29,17 @@ devices:
     sender: 0xFFAE7C90
 ```
 
+### Any actuator — let the add-on pick the sender
+```yaml
+devices:
+  - name: Licht_Flur
+    address: 0xFF94CEA1
+    model: eltako/fsr14
+    sender: auto        # replaced by a fixed address (e.g. 0xFFAE7C91) at the next start
+```
+The address is assigned once and written back into this file; then pair the actuator with it. See
+[[Eltako Setup]].
+
 ### F4SR14 — 4-channel relay (one entry per channel, each with its own address + sender)
 ```yaml
 devices:

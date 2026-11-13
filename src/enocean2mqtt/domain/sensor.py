@@ -25,6 +25,7 @@ _CONFIG_FIELDS = (
     "model",
     "manufacturer",
     "sender",
+    "sender_auto",
     "command",
     "channel",
     "direction",
@@ -117,6 +118,11 @@ class Sensor(MutableMapping):
     @property
     def sender(self) -> int | None:
         return self._d.get("sender")
+
+    @property
+    def sender_auto(self) -> str | None:
+        """The bare devices.yaml name while a ``sender: auto`` device awaits its address."""
+        return self._d.get("sender_auto")
 
     @property
     def command(self) -> str | None:

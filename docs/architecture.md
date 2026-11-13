@@ -52,6 +52,12 @@ Assistant, and command topics flow back the other way.](img/architecture.png)
    configs for every device and marks the bridge `online`. A dropped transceiver or broker reconnects
    with exponential backoff. At startup it also reads the stick's firmware/chip-id, repeater level and
    TX duty-cycle via ESP3 common commands and publishes them as diagnostics.
+   Once the Base ID is known — and **before** discovery — the HA bridge checks every configured
+   `sender` against the stick's range (Base ID + 0…127, warning only) and resolves `sender: auto`
+   devices: `domain/sender_pool.py` (pure rules) picks the address one above the highest offset ever
+   used, `devices.set_auto_sender_in_yaml` writes it into `devices.yaml` (ruamel round-trip, atomic),
+   and the sqlite store remembers the high-water mark per Base ID (`meta` table). If the Base ID
+   arrives late, a background task does the same and publishes the missing discovery afterwards.
 3. Incoming telegrams are decoded per EEP and published as JSON; FSB covers get a persisted `POS`, and
    secure devices persist their rolling code (RLC) so they survive a restart.
 4. HA command topics (`<device>/req/…`) are translated back into EnOcean telegrams (Eltako A5-38-08,
@@ -63,4 +69,11 @@ Assistant, and command topics flow back the other way.](img/architecture.png)
 - Asyncio I/O core (single event loop, `aiomqtt` + async serial/TCP) — reconnect/backoff is
   first-class, so there is no external supervision loop.
 - Reproducible image via `uv sync --frozen` from `uv.lock`; no build-time `git clone`/`cp` overlay.
+- **Sender IDs are assigned once and never re-used.** `sender: auto` is resolved a single time and
+  persisted as a normal fixed `sender` in `devices.yaml` — the file, not the store, is the source of
+  truth, so an unsaved assignment is no assignment (the device stays inactive). Order matters: the
+  sender is part of the HA unique id, so an `auto` device is never announced (`…_NONE`) or allowed to
+  transmit (Base ID fallback) before it has its address. Gaps are not filled, because a removed
+  actuator still obeys its old sender; the per-Base-ID high-water mark in the store covers the case
+  where the removed device held the highest address.
 - Slug is `enocean_mqtt_ha`.

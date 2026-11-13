@@ -327,6 +327,14 @@ class EnoceanDaemon:
                 sensor.get("name", "?"),
             )
             return
+        # A 'sender: auto' device that has not been given its address yet must not fall back to the
+        # Base ID: the actuator would be taught (or addressed) with an address it won't keep.
+        if sensor.get("sender_auto") and not sensor.get("sender"):
+            logger.warning(
+                "Not sending to %s: its automatic sender has not been assigned yet.",
+                sensor.get("name", "?"),
+            )
+            return
         await self._encoder.send(
             sensor,
             destination,
@@ -395,6 +403,12 @@ class EnoceanDaemon:
     async def send_secure_teach_in(self, sensor):
         """Send our own 2-telegram secure teach-in (SEC_TI 0x35) so a device learns our key."""
         sensor = Sensor.from_dict(sensor)
+        if sensor.sender_auto and not sensor.sender:
+            # Same rule as _send_packet: never fall back to the Base ID for a 'sender: auto' device.
+            logger.warning(
+                "Not sending to %s: its automatic sender has not been assigned yet.", sensor.name
+            )
+            return
         key_hex = sensor.key_snd or sensor.key
         if not key_hex:
             logger.warning("secure teach-in requested for %s but no key is configured", sensor.name)
