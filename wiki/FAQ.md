@@ -42,7 +42,7 @@ actuator's own address, and never the ID a wall switch broadcasts. When you pair
 it that `sender` address to obey. See [[Eltako Setup]].
 
 **"Do I have to pick the `sender` addresses myself?"**
-No — write `sender: auto` and the add-on picks a free one at the next start, writes it into your
+No — from version 1.1.0 you can write `sender: auto` and the add-on picks a free one at the next start, writes it into your
 `devices.yaml` and shows it in the log. You still have to teach it into the actuator. See
 [[Eltako Setup]].
 
@@ -53,7 +53,7 @@ really want an old address back, write it as a fixed `sender` yourself.
 
 **"What happens to the senders when I replace the USB stick?"**
 A new stick has a different Base ID, so **all** existing `sender` addresses become invalid — the
-add-on warns about each one at startup (*"outside this transceiver's range"*). Either re-pair the
+add-on (from version 1.1.0) warns about each one at startup (*"outside this transceiver's range"*). Either re-pair the
 actuators with senders from the new range, or write the old Base ID to the new stick (possible only a
 few times per stick). This is the same with hand-picked and automatic senders.
 
