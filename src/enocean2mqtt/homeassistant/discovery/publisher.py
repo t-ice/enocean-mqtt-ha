@@ -27,8 +27,11 @@ class DiscoveryPublisher:
         self._dev_name_in_entity = dev_name_in_entity
         self._decorate = decorate
 
-    def build_discovery(self, sensor, lookup):
+    def build_discovery(self, sensor, lookup, dev_uid=None):
         """Pure: build ``(dev_uid, [(cfgtopic, config), ...])`` for *sensor*. No I/O.
+
+        *dev_uid* overrides the id derived from address + sender — the bridge passes the id the
+        device is already stored under, so a changed sender does not turn it into a new device.
 
         This is the whole EEP-reading → HA-discovery-config translation; keeping it free of the
         broker lets it (and the exact configs it emits) be unit-tested without an MQTT connection.
@@ -53,7 +56,8 @@ class DiscoveryPublisher:
             sender = format_address(sensor.sender)
         except Exception:
             sender = "NONE"
-        dev_uid = lookup.dev_uid(address, sender)
+        if dev_uid is None:
+            dev_uid = lookup.dev_uid(address, sender)
 
         configs = []
         for entity in device_map:
@@ -84,11 +88,11 @@ class DiscoveryPublisher:
             configs.append((f"{entity['component']}/{uid}/config", cfg))
         return dev_uid, configs
 
-    async def publish(self, sensor, lookup, prev_sensor_cfgtopics=None):
+    async def publish(self, sensor, lookup, prev_sensor_cfgtopics=None, dev_uid=None):
         prev = list(prev_sensor_cfgtopics or [])
         update = prev != []
 
-        dev_uid, configs = self.build_discovery(sensor, lookup)
+        dev_uid, configs = self.build_discovery(sensor, lookup, dev_uid)
         sensor_cfgtopics = [cfgtopic for cfgtopic, _ in configs]
 
         # Delete previously-published entities no longer present in the mapping.

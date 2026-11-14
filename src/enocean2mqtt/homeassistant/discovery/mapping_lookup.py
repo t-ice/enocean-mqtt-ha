@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 from abc import ABC, abstractmethod
 
+from enocean2mqtt.domain.sensor import device_base_name
+
 
 class MappingLookup(ABC):
     """Strategy base: the discovery details that differ per device kind. Subclasses must implement
@@ -120,7 +122,7 @@ class ModelMappingLookup(MappingLookup):
         self._model = sensor.model
         self._manufacturer = sensor.manufacturer
         self._reference = self._manufacturer + "_" + self._model
-        self._name = sensor.name[:-3]  # strip the "/RORG" suffix
+        self._name = device_base_name(sensor.name)  # strip the "/RORG" suffix
 
     @property
     def label(self):

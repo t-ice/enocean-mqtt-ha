@@ -16,7 +16,7 @@ profile enocean_mqtt_ha flags=(attach_disconnected,mediate_deleted) {
   capability dac_override,
   # MQTT + ser2net TCP + Supervisor API
   network,
-  # HEALTHCHECK `pgrep -f enocean2mqtt` reads /proc of the daemon (same profile)
+  # (kept from the former pgrep-based HEALTHCHECK, which read /proc of the daemon; harmless)
   ptrace (read) peer=enocean_mqtt_ha,
 
   # S6-Overlay v3 + bashio (globs; base:3.20 ships s6-overlay 3.2.3.0).

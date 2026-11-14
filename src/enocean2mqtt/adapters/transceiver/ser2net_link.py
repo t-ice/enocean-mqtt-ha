@@ -6,6 +6,9 @@ import asyncio
 
 from enocean2mqtt.adapters.transceiver.stream import StreamTransceiver, logger
 
+# Seconds to wait for the TCP connection to the ser2net host.
+_CONNECT_TIMEOUT = 10.0
+
 
 class Ser2netLink(StreamTransceiver):
     """ESP3 transceiver over a raw TCP connection to a ser2net endpoint."""
@@ -18,7 +21,11 @@ class Ser2netLink(StreamTransceiver):
         self._buffer = []
         host, port = self._split_hostport(self._url)
         logger.info("Connecting to ser2net %s:%d", host, port)
-        self._reader, self._writer = await asyncio.open_connection(host, port)
+        # Bounded: against a powered-off host the SYN just vanishes and the kernel would keep
+        # trying for minutes. TimeoutError is an OSError, so the reconnect loop handles it.
+        self._reader, self._writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port), timeout=_CONNECT_TIMEOUT
+        )
 
     @staticmethod
     def _split_hostport(url: str) -> tuple[str, int]:

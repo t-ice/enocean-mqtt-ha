@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 # shellcheck shell=bash
-# EnOcean-MQTT-Eltako add-on entry point.
+# EnOcean MQTT for Home Assistant — add-on entry point.
 #
 #   * Transceiver endpoint from two options: `device` (a local serial /dev path, e.g. /dev/ttyUSB0,
 #     copied from the startup log) or `tcp` (a remote ser2net host:port). TCP wins if both are set; the
@@ -141,7 +141,7 @@ chmod 600 "${CONFIG_FILE}"
 # contributes sensors only).
 DEVICE_ARGS=("${DEVICE_FILE}")
 
-bashio::log.green "Starting EnOcean-MQTT-Eltako (connection: ${CONNECTION})"
+bashio::log.green "Starting EnOcean MQTT for Home Assistant (connection: ${CONNECTION})"
 
 # The daemon runs a single asyncio event loop that connects to the MQTT broker and the
 # transceiver and self-heals connection drops (reconnect with exponential backoff), so run.sh
@@ -149,4 +149,7 @@ bashio::log.green "Starting EnOcean-MQTT-Eltako (connection: ${CONNECTION})"
 # recovered from inside the process. There is no process supervisor inside the container
 # (init: false): if the daemon dies it exits non-zero, and the Supervisor restarts the add-on when
 # its Watchdog switch is on.
+# Heartbeat file for the container HEALTHCHECK (see addon/Dockerfile). Set here as well, so the
+# daemon gets it no matter how the environment reaches this script.
+export ENOCEAN2MQTT_HEARTBEAT_FILE="${ENOCEAN2MQTT_HEARTBEAT_FILE:-/run/enocean2mqtt.alive}"
 exec enocean2mqtt --log-level "${LOG_LEVEL}" --logfile "${LOG_FILE}" "${CONFIG_FILE}" "${DEVICE_ARGS[@]}"

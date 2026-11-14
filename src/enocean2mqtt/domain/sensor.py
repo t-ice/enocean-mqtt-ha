@@ -50,6 +50,15 @@ _CONFIG_FIELDS = (
 _RUNTIME_FIELDS = ("learn", "raw_data", "data")
 
 
+def device_base_name(name: str) -> str:
+    """The device's base topic for a model-derived sensor name (``<device>/<rorg>`` → ``<device>``).
+
+    A model device expands into one sensor per RORG (``…/a5``, ``…/f6``); everything that belongs
+    to the device as a whole (discovery, position, travel time) hangs off the part before it.
+    """
+    return name.rsplit("/", 1)[0]
+
+
 class Sensor(MutableMapping):
     """A configured EnOcean device (+ runtime send scratch). Dict-compatible during migration."""
 

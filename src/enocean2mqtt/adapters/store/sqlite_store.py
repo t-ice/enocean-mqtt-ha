@@ -18,6 +18,8 @@ import sqlite3
 import threading
 import time
 
+from enocean2mqtt.domain.sensor import device_base_name
+
 logger = logging.getLogger("enocean2mqtt.adapters.store")
 
 
@@ -38,10 +40,9 @@ class SqliteDeviceStore:
             legacy_json = None
 
         self._path = sqlite_path
-        # The DB is touched from both the main (EnOcean) thread and paho's network thread
-        # (discovery in _on_connect, deletes in _on_mqtt_message). sqlite forbids sharing a
-        # connection across threads, so allow it (check_same_thread=False) and serialize all
-        # access with a lock. autocommit + WAL keeps each write durable and atomic.
+        # All access comes from the daemon's single event-loop thread today. The lock and
+        # check_same_thread=False are kept as a cheap guard should a caller ever move to a worker
+        # thread. autocommit + WAL keeps each write durable and atomic.
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(sqlite_path, isolation_level=None, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -207,6 +208,41 @@ class SqliteDeviceStore:
                     (f"sender_high_water/{base_id:08X}", str(int(offset))),
                 )
 
+    def stable_uid(self, uid):
+        """The unique id this device is already known under, else *uid* itself.
+
+        A unique id ends in the device's sender (``…_<address>_<sender>``). When only that sender
+        changes — a replaced transceiver, a corrected sender, a late ``sender`` on a device that
+        had none — the device is still the same one, so it keeps its stored id: Home Assistant
+        keeps the entities (names, history, automations) and the row keeps the cover position and
+        rolling codes. Virtual devices (address FFFFFFFF) are told apart by their sender alone and
+        are therefore never matched.
+        """
+        prefix = uid.rpartition("_")[0]
+        if not prefix or prefix.endswith("_FFFFFFFF"):
+            return uid
+        known = [
+            d["uid"] for d in self._all() if str(d.get("uid", "")).rpartition("_")[0] == prefix
+        ]
+        if uid in known or len(known) != 1:
+            return uid
+        return known[0]
+
+    def bridge_id(self, base_id_hex):
+        """The id the bridge device (LEARN switch, diagnostics) is registered under.
+
+        It is the Base ID of the first transceiver this store saw, and stays that way: replacing
+        the stick must not leave a second, orphaned bridge device behind in Home Assistant.
+        """
+        with self._lock:
+            row = self._conn.execute("SELECT value FROM meta WHERE key = 'bridge_id'").fetchone()
+            if row:
+                return row[0]
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES ('bridge_id', ?)", (base_id_hex,)
+            )
+        return base_id_hex
+
     def db_add_device(self, sensor, uid, attr_name=None, attr=None):
         """Add new device to the database"""
         if not self.db_search_device_by_address(sensor["address"]):
@@ -253,7 +289,7 @@ class SqliteDeviceStore:
             sensor_db["type"] = sensor["type"]
         else:
             sensor_db["address"] = sensor["address"]
-            sensor_db["name"] = sensor["name"][:-3]
+            sensor_db["name"] = device_base_name(sensor["name"])
             sensor_db["model"] = sensor["model"]
         if attr is not None:
             sensor_db[attr_name] = attr

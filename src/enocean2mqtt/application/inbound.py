@@ -107,8 +107,9 @@ class InboundRouter:
                 if value is None:
                     # Expected for a malformed/non-numeric payload — DEBUG, not WARNING spam.
                     logger.debug("Cannot parse int value for %s: %s", topic, payload)
-                    # Prevent storing an undefined value (would raise in the EnOcean library)
-                    return None
+                    # Prevent storing an undefined value (would raise in the EnOcean library).
+                    # The topic itself is a known one, so no "unexpected message" warning.
+                    return found_topic
                 logger.debug("%s: %s=%s", sensor.name, prop, value)
                 data = sensor.data or {}
                 if prop not in data and len(data) >= _MAX_ACCUMULATED_FIELDS:
