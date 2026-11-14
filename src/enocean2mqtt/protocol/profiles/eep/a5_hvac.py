@@ -63,17 +63,31 @@ PROFILES = {
         ), direction=2),
     ),
     (0xa5, 0x20, 0x04): profile(0xa5, 0x20, 0x04, 'Heating Radiator Valve Actuating Drive with Feed and Room Temperature Measurement, Local Set Point Control and Display',
+        # DB1 is the room temperature when FL (DB0.0) = 0 and a failure code when FL = 1, so the
+        # two meanings are two cases. As one enum whose first item scaled 0..255 to 10..30 °C,
+        # every failure code was published as a temperature (18 → 11.4 °C) and never matched.
         case((
             LRNB_4BS,
             field('CP', 'Current Position', 0, 8, 'value', unit='%', range_min=0.0, range_max=100.0, scale_min=0.0, scale_max=100.0),
             field('FTS', 'Feed Temperature OR Temperature Set Point', 8, 8, 'value', unit='°C', range_min=0.0, range_max=255.0),
-            field('TMPFC', 'Room Temperature OR Failure Code', 16, 8, 'enum', items=(enum('', minimum=0, maximum=255, scale_min=10.0, scale_max=30.0, unit='°C'), enum('Reserved'), enum('Measurement error', 17), enum('Battery empty', 18), enum('Reserved', 19), enum('Frost protection', 20), enum('Reserved'), enum('Blocked valve', 33), enum('Reserved'), enum('End point detection error', 36), enum('Reserved'), enum('No valve', 40), enum('Reserved'), enum('Not taught in', 49), enum('Reserved'), enum('No response from controller', 53), enum('Teach-in error', 54), enum('Reserved'))),
+            field('TMPFC', 'Room Temperature', 16, 8, 'value', unit='°C', range_min=0.0, range_max=255.0, scale_min=10.0, scale_max=30.0),
             field('MST', 'Measurement Status', 24, 1, 'enum', items=(enum('Active', 0), enum('Inactive', 1))),
             field('STR', 'Status Request', 25, 1, 'enum', items=(enum('No change', 0), enum('Status requested', 1))),
             field('BLS', 'Button Lock Status', 29, 1, 'enum', items=(enum('Unlocked', 0), enum('Locked', 1))),
             field('TS', 'Temperature Selection', 30, 1, 'enum', items=(enum('Feed temperature', 0), enum('Temperature set point', 1))),
             field('FL', 'Failure', 31, 1, 'enum', items=(enum('No failure (TMP is transmitted)', 0), enum('failure (FC is transmitted)', 1))),
-        ), direction=1),
+        ), direction=1, conditions=(cond('data', 31, 1, 0),)),
+        case((
+            LRNB_4BS,
+            field('CP', 'Current Position', 0, 8, 'value', unit='%', range_min=0.0, range_max=100.0, scale_min=0.0, scale_max=100.0),
+            field('FTS', 'Feed Temperature OR Temperature Set Point', 8, 8, 'value', unit='°C', range_min=0.0, range_max=255.0),
+            field('TMPFC', 'Failure Code', 16, 8, 'enum', items=(enum('Reserved'), enum('Measurement error', 17), enum('Battery empty', 18), enum('Reserved', 19), enum('Frost protection', 20), enum('Reserved'), enum('Blocked valve', 33), enum('Reserved'), enum('End point detection error', 36), enum('Reserved'), enum('No valve', 40), enum('Reserved'), enum('Not taught in', 49), enum('Reserved'), enum('No response from controller', 53), enum('Teach-in error', 54), enum('Reserved'))),
+            field('MST', 'Measurement Status', 24, 1, 'enum', items=(enum('Active', 0), enum('Inactive', 1))),
+            field('STR', 'Status Request', 25, 1, 'enum', items=(enum('No change', 0), enum('Status requested', 1))),
+            field('BLS', 'Button Lock Status', 29, 1, 'enum', items=(enum('Unlocked', 0), enum('Locked', 1))),
+            field('TS', 'Temperature Selection', 30, 1, 'enum', items=(enum('Feed temperature', 0), enum('Temperature set point', 1))),
+            field('FL', 'Failure', 31, 1, 'enum', items=(enum('No failure (TMP is transmitted)', 0), enum('failure (FC is transmitted)', 1))),
+        ), direction=1, conditions=(cond('data', 31, 1, 1),)),
         case((
             field('POS', 'Valve Position', 0, 8, 'value', unit='%', range_min=0.0, range_max=100.0, scale_min=0.0, scale_max=100.0),
             field('TSP', 'Temperature Set Point', 8, 8, 'value', unit='°C', range_min=0.0, range_max=255.0, scale_min=10.0, scale_max=30.0),
