@@ -47,12 +47,12 @@ WORKDIR /
 COPY addon/run.sh /run.sh
 RUN chmod a+x /run.sh
 
-# Healthcheck: the daemon process must be alive (busybox pgrep ships in the HA base image).
-# Exec form (DL3025) spelling out the shell, because pgrep's exit code IS the check. The bracket in
-# '[e]nocean2mqtt' keeps the check from matching itself — pgrep -f scans full command lines, and the
-# check's own `sh -c pgrep -f …` line contains the daemon name, so a plain pattern always finds a
-# match and the container would report healthy even with the daemon dead.
+# Healthcheck: the daemon touches this file from its event loop every 15 s. Checking the file's age
+# (instead of merely "is there a process") also catches a daemon that is alive but hung — and a dead
+# one stops touching it just the same. Exec form (DL3025) spelling out the shell, because the test's
+# exit code IS the check; a missing file counts as age "since 1970" and fails.
+ENV ENOCEAN2MQTT_HEARTBEAT_FILE=/run/enocean2mqtt.alive
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD ["/bin/sh", "-c", "pgrep -f '[e]nocean2mqtt' >/dev/null 2>&1"]
+    CMD ["/bin/sh", "-c", "[ $(( $(date +%s) - $(stat -c %Y /run/enocean2mqtt.alive 2>/dev/null || echo 0) )) -lt 60 ]"]
 
 CMD [ "/run.sh" ]

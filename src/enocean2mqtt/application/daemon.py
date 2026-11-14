@@ -5,6 +5,7 @@ import contextlib
 import datetime
 import json
 import logging
+import os
 import signal
 import time
 from collections import deque
@@ -55,6 +56,22 @@ _MAX_MQTT_PAYLOAD = 65536
 _IDLE_PROBE_AFTER = 120.0
 _PROBE_TIMEOUT = 10.0
 _WATCHDOG_TICK = 5.0
+# A reconnect backoff only starts over once the connection has held this long. Resetting it on the
+# bare connect made a peer that accepts and immediately drops us (ser2net without its stick, a
+# second bridge with the same MQTT client id) a once-per-second reconnect loop.
+_STABLE_AFTER = 30.0
+# Every ESP3 write is answered within milliseconds. A RESPONSE still missing after this long is
+# lost; its booking is dropped so it can't shift every later answer onto the wrong command.
+_RESPONSE_TIMEOUT = 5.0
+# While the Base ID is unknown, ask the transceiver again this often (a lost answer used to leave
+# the LEARN switch missing and Base-ID senders dead until the next reconnect).
+_BASE_ID_RETRY = 30.0
+# Both halves of a secure teach-in arrive back to back; an older lone half is discarded.
+_SEC_TI_WINDOW = 10.0
+# Liveness heartbeat for the container healthcheck: the file named by this environment variable is
+# touched from the event loop, so a hung daemon (process alive, loop stuck) turns unhealthy.
+_HEARTBEAT_ENV = "ENOCEAN2MQTT_HEARTBEAT_FILE"
+_HEARTBEAT_INTERVAL = 15.0
 
 logger = logging.getLogger("enocean2mqtt.application.daemon")
 
@@ -70,10 +87,13 @@ class _Expected:
     send that fails removes exactly its own entry and the order of the others stays intact.
     """
 
-    __slots__ = ("kind",)
+    __slots__ = ("kind", "sent_at")
 
     def __init__(self, kind: str) -> None:
         self.kind = kind
+        # Set once the write went out; None while the send still waits (lock / pacing gap), so a
+        # long command burst can't make its own queued entries look overdue.
+        self.sent_at: float | None = None
 
     def __repr__(self) -> str:
         return f"<expect {self.kind}>"
@@ -161,6 +181,7 @@ class EnoceanDaemon:
         # commands that could not be sent because the transceiver was offline.
         self._processing_errors = 0
         self._commands_dropped = 0
+        self._responses_missed = 0
 
         # Topics (re)subscribed on every broker connect. The client starts each connection with a
         # clean session, so a subscription made only once would silently vanish after a reconnect.
@@ -180,6 +201,7 @@ class EnoceanDaemon:
         # ESP3 RESPONSE packets carry no command echo — they are correlated to what we sent purely
         # by order. This FIFO holds one _Expected per write to the transceiver (see _transmit).
         self._pending_cmd: deque[_Expected] = deque()
+        self._base_id_requested_at: float | None = None
 
     def _build_transceiver(self):
         """Construct the EnOcean transceiver from config (serial or ser2net TCP, auto-detected)."""
@@ -535,7 +557,13 @@ class EnoceanDaemon:
         if not data:
             return
         idx = (data[0] >> 6) & 0b11
-        pending = self._sec_ti_pending.setdefault(address, {})
+        now = self._clock()
+        # Drop lone halves that never got their partner (also bounds the buffer), so a stale first
+        # telegram is not paired with the second one of a later attempt.
+        self._sec_ti_pending = {
+            a: p for a, p in self._sec_ti_pending.items() if now - p["at"] <= _SEC_TI_WINDOW
+        }
+        pending = self._sec_ti_pending.setdefault(address, {"at": now})
         pending[idx] = data
         if not (0 in pending and 1 in pending):
             return  # await the other telegram of the pair
@@ -603,12 +631,12 @@ class EnoceanDaemon:
             logger.info("Interrupted, shutting down")
 
     async def _run_async(self):
-        """Top-level supervisor: (re)connect the MQTT broker with backoff; run the I/O tasks.
+        """Top-level supervisor: run the transceiver and the broker side next to each other.
 
-        A single event loop runs two tasks inside a TaskGroup: one reads the transceiver, one
-        consumes MQTT. The transceiver task self-heals connection drops internally (so a Pi
-        power-cycle / ser2net restart does not tear down MQTT); an MQTT error propagates out of
-        the group and triggers a broker reconnect here — replacing the old run.sh restart loop.
+        The two links are independent: the transceiver task heals its own drops, the MQTT task
+        reconnects the broker with backoff. A broker restart therefore no longer closes the
+        transceiver — telegrams keep being decoded (cover positions and rolling codes stay
+        current) and are simply not published while the broker is away.
         """
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -616,19 +644,33 @@ class EnoceanDaemon:
             with contextlib.suppress(NotImplementedError, RuntimeError):
                 loop.add_signal_handler(sig, self._shutdown.set)
 
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(self._enocean_task())
+                tg.create_task(self._mqtt_supervisor())
+                tg.create_task(self._heartbeat_task())
+                tg.create_task(self._shutdown_watcher())
+        except* _ShutdownRequested:
+            logger.debug("shutdown requested")
+        finally:
+            logger.debug("Cleaning up")
+            await self._transport.close()
+
+    async def _mqtt_supervisor(self):
+        """(Re)connect the MQTT broker with backoff; run the broker-bound tasks while connected."""
         mqtt_delay = _RECONNECT_MIN_DELAY
         while not self._shutdown.is_set():
+            connected_at = None
             try:
                 async with self._make_mqtt_client() as client:
                     self._client = client
-                    mqtt_delay = _RECONNECT_MIN_DELAY  # connected → reset backoff
-                    async with asyncio.TaskGroup() as tg:
-                        tg.create_task(self._enocean_task())
-                        tg.create_task(self._mqtt_task())
-                        tg.create_task(self._stats_task())
-                        tg.create_task(self._shutdown_watcher())
-            except* _ShutdownRequested:
-                logger.debug("shutdown requested")  # self._shutdown is set → loop exits below
+                    connected_at = self._clock()
+                    try:
+                        async with asyncio.TaskGroup() as tg:
+                            tg.create_task(self._mqtt_task())
+                            tg.create_task(self._stats_task())
+                    finally:
+                        await self._announce_offline(client)
             except* aiomqtt.MqttError as eg:
                 self._mqtt_reconnects += 1
                 logger.warning(
@@ -641,11 +683,36 @@ class EnoceanDaemon:
 
             if self._shutdown.is_set():
                 break
+            if connected_at is not None and self._clock() - connected_at >= _STABLE_AFTER:
+                mqtt_delay = _RECONNECT_MIN_DELAY  # it held for a while → start the backoff over
             await asyncio.sleep(mqtt_delay)
             mqtt_delay = min(mqtt_delay * 2, _RECONNECT_MAX_DELAY)
 
-        logger.debug("Cleaning up")
-        await self._transport.close()
+    async def _announce_offline(self, client):
+        """Publish 'offline' before leaving the broker (stop, restart, crash).
+
+        The last will alone is not enough: the client disconnects cleanly on the way out, and a
+        clean DISCONNECT makes the broker discard the will — Home Assistant kept showing every
+        device as available while the add-on was stopped or had crashed. Best-effort: when the
+        connection is already gone the publish fails, and then the broker sends the will itself.
+        """
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(
+                client.publish(self._bridge_state_topic, "offline", retain=True), timeout=2
+            )
+
+    async def _heartbeat_task(self):
+        """Touch the heartbeat file from the event loop (read by the container healthcheck)."""
+        path = os.environ.get(_HEARTBEAT_ENV)
+        if not path:
+            return
+        while True:
+            try:
+                with open(path, "w", encoding="ascii") as fh:
+                    fh.write(str(int(time.time())))
+            except OSError as exc:
+                logger.debug("cannot write heartbeat file %s: %s", path, exc)
+            await asyncio.sleep(_HEARTBEAT_INTERVAL)
 
     async def _shutdown_watcher(self):
         """Cancel the sibling I/O tasks (via the TaskGroup) once shutdown is requested."""
@@ -684,6 +751,7 @@ class EnoceanDaemon:
             "transmit_failures": self._transmit_failures,
             "processing_errors": self._processing_errors,
             "commands_dropped": self._commands_dropped,
+            "responses_missed": self._responses_missed,
         }
 
     async def _stats_task(self):
@@ -716,9 +784,10 @@ class EnoceanDaemon:
         delay = _RECONNECT_MIN_DELAY
         while not self._shutdown.is_set():
             watchdog = None
+            connected_at = None
             try:
                 await self._transport.connect()
-                delay = _RECONNECT_MIN_DELAY  # connected → reset backoff
+                connected_at = self._clock()
                 self._last_rx = self._clock()
                 watchdog = asyncio.create_task(self._liveness_watchdog())
                 await self._startup_handshake()
@@ -739,6 +808,8 @@ class EnoceanDaemon:
 
             if self._shutdown.is_set():
                 break
+            if connected_at is not None and self._clock() - connected_at >= _STABLE_AFTER:
+                delay = _RECONNECT_MIN_DELAY  # the link held for a while → start the backoff over
             await asyncio.sleep(delay)
             delay = min(delay * 2, _RECONNECT_MAX_DELAY)
 
@@ -753,6 +824,10 @@ class EnoceanDaemon:
             await self._handle_enocean_packet(packet)
         except (OSError, ConnectionError):
             raise
+        except aiomqtt.MqttError as exc:
+            # The broker went away in the middle of a publish. Not a fault of the telegram and no
+            # reason to drop the transceiver: the MQTT task notices the loss and reconnects.
+            logger.warning("Telegram not published: MQTT connection lost (%s)", exc)
         except Exception:
             self._processing_errors += 1
             logger.exception("Error processing telegram %s — skipped", packet)
@@ -764,6 +839,11 @@ class EnoceanDaemon:
         while True:
             await self._sleep(self._watchdog_tick)
             now = self._clock()
+            self._expire_pending(now)
+            try:
+                await self._retry_base_id(now)
+            except (ConnectionError, OSError) as exc:
+                logger.debug("Base ID query not sent (%s)", exc)
             if probe_sent_at is not None and self._telegrams_total != packets_at_probe:
                 probe_sent_at = None  # something arrived since the ping: the link is alive
             if probe_sent_at is None:
@@ -788,6 +868,30 @@ class EnoceanDaemon:
                 await self._transport.close()
                 return
 
+    def _expire_pending(self, now):
+        """Drop bookings whose RESPONSE is overdue (see _RESPONSE_TIMEOUT)."""
+        while self._pending_cmd:
+            entry = self._pending_cmd[0]
+            if entry.sent_at is None or now - entry.sent_at <= _RESPONSE_TIMEOUT:
+                break
+            self._pending_cmd.popleft()
+            self._responses_missed += 1
+            logger.debug("no RESPONSE from the transceiver for %r; booking dropped", entry)
+
+    async def _retry_base_id(self, now):
+        """Ask for the Base ID again while it is unknown and no query is outstanding."""
+        if self.enocean_sender is not None or self._base_id_requested_at is None:
+            return
+        if now - self._base_id_requested_at < _BASE_ID_RETRY:
+            return
+        if any(entry.kind == "idbase" for entry in self._pending_cmd):
+            return
+        logger.info("Transceiver has not reported its Base ID yet; asking again")
+        self._base_id_requested_at = now
+        await self._transmit(
+            Packet.create_common_command(COMMON_COMMAND_CODE.CO_RD_IDBASE), "idbase"
+        )
+
     def _expect(self, kind: str) -> _Expected:
         """Book a RESPONSE of *kind*; call right before the matching write (see _transmit)."""
         entry = _Expected(kind)
@@ -807,6 +911,7 @@ class EnoceanDaemon:
             with contextlib.suppress(ValueError):
                 self._pending_cmd.remove(entry)
             raise
+        entry.sent_at = self._clock()
 
     async def _startup_handshake(self):
         """Query transceiver identity + controller config after (re)connect; apply the repeater.
@@ -822,6 +927,7 @@ class EnoceanDaemon:
         if first:
             # Identity + Base ID: only needed once (the Base ID doesn't change across reconnects).
             await self._transmit(command(COMMON_COMMAND_CODE.CO_RD_VERSION), "version")
+            self._base_id_requested_at = self._clock()
             await self._transmit(command(COMMON_COMMAND_CODE.CO_RD_IDBASE), "idbase")
             # Apply the configured repeater once (1/2 = enable; off is the default, not written).
             want = self.conf.repeater_level
@@ -839,7 +945,8 @@ class EnoceanDaemon:
         self._telegrams_window += 1
         self._last_rx = self._clock()  # any packet proves the link alive (liveness watchdog)
         # Stamp arrival time (used for the _DATE_ field); the threaded reader used to do this.
-        packet.received = datetime.datetime.now()
+        # Timezone-aware (local time with its UTC offset), so `_DATE_` is unambiguous for consumers.
+        packet.received = datetime.datetime.now().astimezone()
 
         # Auto-respond to UTE teach-in (VLD device pairing) when teach-in is enabled.
         if isinstance(packet, UTETeachInPacket) and self.teach_in:
@@ -872,6 +979,7 @@ class EnoceanDaemon:
 
     def _handle_response_packet(self, packet):
         """Route an ESP3 RESPONSE to the command it answers (matched by send order)."""
+        self._expire_pending(self._clock())
         tag = self._pending_cmd.popleft().kind if self._pending_cmd else None
         ok = getattr(packet, "response", None) == RETURN_CODE.OK
         if tag == "radio":

@@ -16,6 +16,8 @@ import json
 import logging
 from importlib.metadata import PackageNotFoundError, version
 
+import aiomqtt
+
 import enocean2mqtt.protocol.utils
 from enocean2mqtt.adapters.store.sqlite_store import SqliteDeviceStore
 from enocean2mqtt.application.daemon import _BASE_ID_TIMEOUT, EnoceanDaemon
@@ -23,7 +25,7 @@ from enocean2mqtt.config import as_bool
 from enocean2mqtt.devices import append_device_to_yaml, set_auto_sender_in_yaml
 from enocean2mqtt.domain import sender_pool
 from enocean2mqtt.domain.config import Config
-from enocean2mqtt.domain.sensor import Sensor
+from enocean2mqtt.domain.sensor import Sensor, device_base_name
 from enocean2mqtt.homeassistant.cover import (
     LEGACY_POSITION_SUBTOPIC,
     LEGACY_SHUT_TIME_SUBTOPIC,
@@ -84,6 +86,7 @@ _BRIDGE_STATS = (
         "Commands dropped (transceiver offline)",
         {"state_class": "total_increasing"},
     ),
+    ("responses_missed", "Transceiver responses missed", {"state_class": "total_increasing"}),
 )
 
 
@@ -383,6 +386,9 @@ class HomeAssistantBridge:
         if not self._first_mqtt_connect:
             await self._flush_sender_updates()  # senders assigned since the last connect
             await self._publish_system_entities()  # no-op once published
+            # The transceiver keeps running while the broker is away, so covers may have moved
+            # meanwhile: the store has their position, the broker missed it.
+            await self._publish_cover_positions()
             return
         await self._sync_sensor_discovery()
         if self._daemon.enocean_sender is None:
@@ -457,9 +463,13 @@ class HomeAssistantBridge:
         address = fmt(sensor.address)
         if not sensor.model:
             eep = format((sensor.rorg << 16) + (sensor.func << 8) + sensor.type, "06X")
-            return f"{eep}_{address}_{sender}", sensor.name, self._mqtt_discovery_eep
-        dev_uid = f"{sensor.manufacturer}_{sensor.model}_{address}_{sender}"
-        return dev_uid, sensor.name[:-3], self._mqtt_discovery_model  # name[:-3] strips "/RORG"
+            dev_uid = self._devmgr.stable_uid(f"{eep}_{address}_{sender}")
+            return dev_uid, sensor.name, self._mqtt_discovery_eep
+        # A device already stored under another sender keeps that unique id (see stable_uid).
+        dev_uid = self._devmgr.stable_uid(
+            f"{sensor.manufacturer}_{sensor.model}_{address}_{sender}"
+        )
+        return dev_uid, device_base_name(sensor.name), self._mqtt_discovery_model
 
     async def _prune_deleted_devices(self, known_uids):
         """Remove discovery for devices no longer listed in the config (their retained topics)."""
@@ -490,11 +500,20 @@ class HomeAssistantBridge:
             if dev_uid in discovered_uids:
                 continue
             discovered_uids.add(dev_uid)
-            sensor_db = self._devmgr.db_get_device_by_field("name", db_name)
-            cfgtopics = sensor_db.get("cfgtopics", None) if sensor_db else None
-            await discover(sensor, cfgtopics)
+            # Whatever happens below, this device is still configured: never prune it.
             with contextlib.suppress(ValueError):
                 known_uids.remove(dev_uid)
+            sensor_db = self._devmgr.db_get_device_by_field("name", db_name)
+            cfgtopics = sensor_db.get("cfgtopics", None) if sensor_db else None
+            try:
+                await discover(sensor, cfgtopics)
+            except aiomqtt.MqttError:
+                raise  # broker gone: the reconnect loop handles it
+            except Exception:
+                # One device that cannot be announced must not take the other devices down.
+                logger.exception(
+                    "Discovery for %s failed — the device is skipped, all others continue", db_name
+                )
         await self._prune_deleted_devices(known_uids)
 
     async def _publish_cover_shut_times(self):
@@ -512,7 +531,7 @@ class HomeAssistantBridge:
                 and sensor.shut_time is not None
                 and sensor.rorg == 0xA5
             ):
-                device_topic = sensor.name[:-3]
+                device_topic = device_base_name(sensor.name)
                 await self._daemon.publish(
                     device_topic + LEGACY_SHUT_TIME_SUBTOPIC, "", retain=True
                 )
@@ -560,12 +579,14 @@ class HomeAssistantBridge:
             # Base ID is known here — after_connect skips these system entities when it's absent.
             sender = enocean2mqtt.protocol.utils.combine_hex(self._daemon.enocean_sender)
             sender_hex = enocean2mqtt.protocol.utils.format_address(sender)
-            uid = "enocean2mqtt_" + attr + "_" + sender_hex
+            # Registered under the first transceiver's Base ID for good (see bridge_id).
+            bridge_id = self._devmgr.bridge_id(sender_hex)
+            uid = "enocean2mqtt_" + attr + "_" + bridge_id
             cfg["unique_id"] = uid
             cfg["name"] = entity["name"]
             cfg["device"] = {
                 "name": "ENOCEAN2MQTT",
-                "identifiers": sender_hex,
+                "identifiers": bridge_id,
                 "model": "Virtual @" + sender_hex,
                 "manufacturer": "EnOcean MQTT for Home Assistant",
                 "configuration_url": "https://github.com/t-ice/enocean-mqtt-ha",
@@ -592,15 +613,16 @@ class HomeAssistantBridge:
         stats_topic = self._daemon.conf.mqtt_prefix + "bridge/stats"
         sender = enocean2mqtt.protocol.utils.combine_hex(self._daemon.enocean_sender)
         sender_hex = enocean2mqtt.protocol.utils.format_address(sender)
+        bridge_id = self._devmgr.bridge_id(sender_hex)
         device = {
             "name": "ENOCEAN2MQTT",
-            "identifiers": sender_hex,
+            "identifiers": bridge_id,
             "model": "Virtual @" + sender_hex,
             "manufacturer": "EnOcean MQTT for Home Assistant",
             "configuration_url": "https://github.com/t-ice/enocean-mqtt-ha",
         }
         for field, name, extra in _BRIDGE_STATS:
-            uid = f"enocean2mqtt_stat_{field}_{sender_hex}"
+            uid = f"enocean2mqtt_stat_{field}_{bridge_id}"
             cfg = {
                 "unique_id": uid,
                 "name": name,
@@ -617,12 +639,14 @@ class HomeAssistantBridge:
     async def _mqtt_discovery_eep(self, sensor, prev_sensor_cfgtopics=None):
         """Publish EEP-based MQTT discovery (delegates to DiscoveryPublisher + EEP strategy)."""
         lookup = EepMappingLookup(sensor, self._ha_mapping, self._daemon.conf.mqtt_prefix)
-        await self._discovery.publish(sensor, lookup, prev_sensor_cfgtopics)
+        dev_uid = self._discovery_identity(sensor)[0]
+        await self._discovery.publish(sensor, lookup, prev_sensor_cfgtopics, dev_uid)
 
     async def _mqtt_discovery_model(self, sensor, prev_sensor_cfgtopics=None):
         """Publish model-based MQTT discovery (delegates to DiscoveryPublisher + model strategy)."""
         lookup = ModelMappingLookup(sensor, self._ha_mapping, self._daemon.conf.mqtt_prefix)
-        await self._discovery.publish(sensor, lookup, prev_sensor_cfgtopics)
+        dev_uid = self._discovery_identity(sensor)[0]
+        await self._discovery.publish(sensor, lookup, prev_sensor_cfgtopics, dev_uid)
 
     # =============================================================================================
     # SYSTEM (LEARN / teach-in)

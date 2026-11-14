@@ -28,7 +28,9 @@ transceiver therefore books one entry in a FIFO (`EnoceanDaemon._pending_cmd`, v
 startup commands, the liveness ping **and every radio telegram** (the transceiver answers each
 `RADIO_ERP1` write with a `RESPONSE` too). Each `RESPONSE` is routed to the write it answers, so a
 telegram sent while the startup handshake is still running can't shift the answers onto the wrong
-fields; a write that fails removes exactly its own entry.
+fields; a write that fails removes exactly its own entry. An entry whose `RESPONSE` is still missing
+5 s after the write went out is dropped (counted as `responses_missed`), so one lost answer cannot
+shift every later one; while the Base ID is unknown, `CO_RD_IDBASE` is sent again every 30 s.
 
 | Command | Code | Response we decode |
 |---|---|---|

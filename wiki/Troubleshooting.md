@@ -96,6 +96,11 @@ A device with an unresolved `sender: auto` creates **no entities** until the add
 that is intentional: the sender is part of the entity's unique id, so announcing it earlier would
 leave orphaned entities behind.
 
+Once a device is known, its unique id **stays** — also when its `sender` changes later (a corrected
+address, a replaced stick). Home Assistant keeps the entities with their names and history, and
+covers keep their position. The same goes for the bridge device (LEARN switch, diagnostics): it
+stays registered under the Base ID of the first stick.
+
 The last assignment is also published (retained) on `<prefix>bridge/last_assigned_sender` as
 `{"name": "…", "sender": "0x…"}`.
 
@@ -111,10 +116,18 @@ skipped. Search the **Log** for:
 | `Error processing telegram … — skipped` | A received telegram could not be decoded (the log shows why). The connection stays up. | Open an issue with the log lines — this points to a decoding bug. |
 | `Transceiver not responding … — reconnecting` | No packet for 2 minutes and no answer to a ping: the link was dead (e.g. the Pi lost power). The add-on reconnects by itself. | Check power / network of the Pi if this repeats. |
 | `Transceiver rejected a telegram (…)` | The stick refused to transmit (busy, duty-cycle limit). | Rare on its own; many of them mean too much traffic at once. |
-| `Transceiver reported no Base ID yet` | The stick didn't answer within 10 s of the broker connect. The LEARN switch and the diagnostics are added as soon as it does. | If it never does, see *"Waiting for device base ID"* above. |
+| `Transceiver reported no Base ID yet` | The stick didn't answer within 10 s of the broker connect. The LEARN switch and the diagnostics are added as soon as it does; the add-on asks again every 30 s. | If it never does, see *"Waiting for device base ID"* above. |
+| `Telegram not published: MQTT connection lost` | The broker went away while a telegram was being published. The add-on reconnects to the broker; the link to the stick stays up. | Nothing, if it only shows around a broker restart. |
+| `Discovery for <name> failed — the device is skipped` | This one device could not be announced to Home Assistant (the log shows why). All other devices work. | Open an issue with the log lines. |
+| `MQTT connection error (…); reconnecting in …s` with growing pauses | The broker keeps closing the connection right after it is made. | Wrong password? A second copy of the add-on (same client id) connected to the same broker? |
 
 The counters `processing_errors` and `commands_dropped` on `bridge/stats` (and as diagnostic
-sensors on the bridge device) show how often the first two happened since the last start.
+sensors on the bridge device) show how often the first two happened since the last start;
+`responses_missed` counts writes the stick never acknowledged.
+
+While the **broker** is away the add-on stays connected to the stick: telegrams are still decoded
+(cover positions stay correct and are published again after the reconnect), but they are not
+published late — a button press replayed half a minute later would trigger automations out of time.
 
 ## Some commands are ignored when triggering many devices at once
 
@@ -136,10 +149,11 @@ EEP (datasheet / label), then set the matching `eep:`. If it still looks wrong, 
 
 ## Diagnostics
 
-- `enocean2mqtt/bridge/state` — retained `online` / `offline` availability.
+- `enocean2mqtt/bridge/state` — retained `online` / `offline` availability. It turns `offline`
+  whenever the add-on is not running: stopped, updating, restarting or crashed.
 - `enocean2mqtt/bridge/stats` — retained JSON: uptime, telegrams/min, unknown-sender count, reconnect
   counts, skipped messages (`processing_errors`), commands dropped while the transceiver was offline
-  (`commands_dropped`), and the transceiver's `base_id` + firmware version (handy to confirm the
+  (`commands_dropped`), writes the stick never acknowledged (`responses_missed`), and the transceiver's `base_id` + firmware version (handy to confirm the
   stick is talking).
 - `log_level: debug` logs every raw telegram (see the capture procedure in
   [[Supported Devices]]).

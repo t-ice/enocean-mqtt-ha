@@ -77,3 +77,31 @@ def test_power_failure_daemon_restart_recovers_and_persists(stack, mqtt_client):
     )
     # the persistent store survived the restart (positions/discovery bookkeeping intact)
     assert db.exists() and db.stat().st_size >= size_before
+
+
+def test_stopping_the_daemon_reports_offline(stack, mqtt_client):
+    """Stopping the add-on (SIGTERM) must flip availability: the last will is discarded on the
+    clean disconnect, so the daemon has to say 'offline' itself."""
+    assert wait_until(lambda: mqtt_client.msgs.get(BRIDGE) == b"online", timeout=30)
+
+    stack["podman"]("stop", "-t", "10", stack["daemon"])
+
+    assert wait_until(lambda: mqtt_client.msgs.get(BRIDGE) == b"offline", timeout=15), (
+        f"bridge still reported {mqtt_client.msgs.get(BRIDGE)!r} after the daemon was stopped"
+    )
+
+
+def test_broker_restart_leaves_the_transceiver_connected(stack, mqtt_client):
+    """A broker outage is the broker's business only: the ser2net link stays up throughout."""
+    assert wait_until(lambda: mqtt_client.msgs.get(BRIDGE) == b"online", timeout=30)
+    log = stack["work"] / "daemon.log"
+
+    def transceiver_connects():
+        return log.read_text(encoding="utf-8").count("Connecting to ser2net")
+
+    assert transceiver_connects() == 1
+    stack["podman"]("restart", "-t", "1", stack["mosquitto"])
+    mqtt_client.forget("bridge/state")
+
+    assert wait_until(lambda: mqtt_client.msgs.get(BRIDGE) == b"online", timeout=60)
+    assert transceiver_connects() == 1, "the broker restart reconnected the transceiver as well"
