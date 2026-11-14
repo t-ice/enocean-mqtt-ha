@@ -23,9 +23,12 @@ raw `data`/`optional` (parsed, not interpreted).
 ## Common commands (ESP3 §Common Command) — what we send
 
 The daemon issues common commands on startup to identify the transceiver. ESP3 **responses carry no
-command identifier** — they are correlated to requests purely by send order — so the daemon sends
-them in a fixed sequence and records that order in a FIFO (`Communicator._pending_cmd`); each
-`RESPONSE` is routed to the command it answers.
+command identifier** — they are correlated to requests purely by send order. Every write to the
+transceiver therefore books one entry in a FIFO (`EnoceanDaemon._pending_cmd`, via `_transmit`):
+startup commands, the liveness ping **and every radio telegram** (the transceiver answers each
+`RADIO_ERP1` write with a `RESPONSE` too). Each `RESPONSE` is routed to the write it answers, so a
+telegram sent while the startup handshake is still running can't shift the answers onto the wrong
+fields; a write that fails removes exactly its own entry.
 
 | Command | Code | Response we decode |
 |---|---|---|
@@ -36,8 +39,10 @@ them in a fixed sequence and records that order in a FIFO (`Communicator._pendin
 | `CO_RD_DUTYCYCLE_LIMIT` | 0x23 | `return_code + available(1, %) + …` → remaining TX duty-cycle budget (diagnostic). |
 
 `Packet.create_common_command(code, *payload)` builds these; the codes live in
-`COMMON_COMMAND_CODE`. Every common command yields exactly one `RESPONSE` (even `NOT_SUPPORTED`), so
-the send-order FIFO stays aligned; a command the transceiver doesn't support leaves the field unset.
+`COMMON_COMMAND_CODE`. Every write yields exactly one `RESPONSE` (even `NOT_SUPPORTED`), so the
+send-order FIFO stays aligned; a command the transceiver doesn't support leaves the field unset. A
+radio telegram the transceiver refuses (non-`OK` return code) is logged and counted as a transmit
+failure.
 
 ### Handled
 
@@ -50,8 +55,18 @@ the send-order FIFO stays aligned; a command the transceiver doesn't support lea
   startup (and the configured repeater level applied); both are published as diagnostics.
 - **Duty-cycle / transmit EVENTs.** `CO_DUTYCYCLE_LIMIT` and `CO_TRANSMIT_FAILED` events are handled
   (logged + reflected in diagnostics).
-- **Order-correlated response routing.** Responses are matched to the commands we sent by order (ESP3
-  has no command echo), so multiple startup commands are attributed to the right response.
+- **Order-correlated response routing.** Responses are matched to what we sent by order (ESP3 has
+  no command echo); radio telegrams are booked as well, so they never displace a startup answer.
+- **Liveness watchdog.** A half-open TCP link or a hung stick delivers nothing and raises nothing.
+  After 120 s without any packet the daemon sends `CO_RD_VERSION` (a local command, no radio
+  traffic); if nothing arrives within 10 s the link is closed and the reconnect loop takes over.
+- **Header-corruption resync.** The header CRC is checked as soon as the 6 header bytes are there —
+  before the length is trusted. On a bad header or data CRC only the sync byte is dropped and the
+  search restarts at the next `0x55` (the ESP3 resync rule). A junk header that passes its CRC by
+  chance (1 in 256) is abandoned as soon as a complete, fully valid frame follows inside its claimed
+  length, so a stray `0x55` (typical right after a ser2net connect) can no longer stall the stream.
+  Covered by a property test (`tests/protocol/test_resync.py`): arbitrary junk before real frames,
+  arbitrary chunking, every real frame recovered in order.
 - **Secure telegrams** (`SEC` 0x30 / `SEC_ENCAPS` 0x31 / `SEC_TI` 0x35), per *Security of EnOcean
   Radio Networks v3.02* — implemented in `protocol/security.py` and verified against the Annex A.4
   known-answer vectors (no hardware needed):
@@ -82,8 +97,6 @@ protocol space and are pinned by the vendored characterization tests); "unused" 
 
 - **ERP2 decode** — not implemented; it needs a distinct frame parser, and is only relevant for an
   ERP2 transceiver.
-- **Header-corruption resync.** On a data-CRC mismatch `parse_msg` drops the framed length and the
-  transceiver read loop re-parses the remainder until a good frame emerges (covered by
-  `tests/protocol/test_malformed.py`). A corrupt *header* (an untrustworthy length) is the harder
-  case: a naive "resync to the next `0x55`" can land inside a payload that happens to contain `0x55`,
-  so robust handling belongs at the streaming read-loop level rather than the single-shot parser.
+- **Resync false positives.** After a resync the parser may land on a `0x55` inside a payload; it
+  only accepts a frame there if *both* CRCs pass (about 1 in 65 536 per such byte), so a phantom
+  telegram is possible in theory but vanishingly rare.

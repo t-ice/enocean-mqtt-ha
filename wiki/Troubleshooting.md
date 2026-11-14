@@ -98,6 +98,23 @@ leave orphaned entities behind.
 The last assignment is also published (retained) on `<prefix>bridge/last_assigned_sender` as
 `{"name": "…", "sender": "0x…"}`.
 
+## Connection and robustness messages
+
+The add-on keeps running through bad input and connection drops; these lines tell you what it
+skipped. Search the **Log** for:
+
+| Log message | Meaning | What to do |
+|---|---|---|
+| `Error handling MQTT message on <topic> — message ignored` | A command could not be processed (the log shows why). Only this message was skipped. | Check the automation/template that publishes to `<topic>`. If it looks correct, open an issue with the log lines. |
+| `Command for <name> not sent: transceiver offline` | A command arrived while the transceiver was reconnecting (Pi reboot, ser2net restart). It is dropped on purpose, not delayed — a blind moving half a minute late is worse. | Nothing, if it is rare. Often: check the Pi / network. |
+| `Error processing telegram … — skipped` | A received telegram could not be decoded (the log shows why). The connection stays up. | Open an issue with the log lines — this points to a decoding bug. |
+| `Transceiver not responding … — reconnecting` | No packet for 2 minutes and no answer to a ping: the link was dead (e.g. the Pi lost power). The add-on reconnects by itself. | Check power / network of the Pi if this repeats. |
+| `Transceiver rejected a telegram (…)` | The stick refused to transmit (busy, duty-cycle limit). | Rare on its own; many of them mean too much traffic at once. |
+| `Transceiver reported no Base ID yet` | The stick didn't answer within 10 s of the broker connect. The LEARN switch and the diagnostics are added as soon as it does. | If it never does, see *"Waiting for device base ID"* above. |
+
+The counters `processing_errors` and `commands_dropped` on `bridge/stats` (and as diagnostic
+sensors on the bridge device) show how often the first two happened since the last start.
+
 ## Some commands are ignored when triggering many devices at once
 
 Firing e.g. `cover.close_cover` at many covers in one automation can drop telegrams: an EnOcean ERP1
@@ -120,6 +137,8 @@ EEP (datasheet / label), then set the matching `eep:`. If it still looks wrong, 
 
 - `enocean2mqtt/bridge/state` — retained `online` / `offline` availability.
 - `enocean2mqtt/bridge/stats` — retained JSON: uptime, telegrams/min, unknown-sender count, reconnect
-  counts, and the transceiver's `base_id` + firmware version (handy to confirm the stick is talking).
+  counts, skipped messages (`processing_errors`), commands dropped while the transceiver was offline
+  (`commands_dropped`), and the transceiver's `base_id` + firmware version (handy to confirm the
+  stick is talking).
 - `log_level: debug` logs every raw telegram (see the capture procedure in
   [[Supported Devices]]).
