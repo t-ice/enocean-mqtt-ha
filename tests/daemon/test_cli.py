@@ -162,3 +162,37 @@ def test_main_accepts_auto_sender_with_ha_overlay(monkeypatch, caplog):
     with caplog.at_level("ERROR"):
         cli.main()
     assert "sender: auto" not in caplog.text
+
+
+# --- exit status: a crash must look like a failure to the Supervisor (review 2026-11) ----------
+
+
+def test_main_exits_non_zero_when_the_daemon_crashes(monkeypatch, caplog):
+    """Exit 0 reads as a clean stop, so the Supervisor watchdog would not restart the add-on."""
+    _run_main(monkeypatch, overlay="none")
+    com = mock.Mock()
+    com.run.side_effect = RuntimeError("boom")
+    monkeypatch.setattr(
+        "enocean2mqtt.application.bootstrap.EnoceanDaemon", mock.Mock(return_value=com)
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main()
+    assert exit_info.value.code == 1
+    assert "Unhandled error; shutting down" in caplog.text
+
+
+def test_main_exits_non_zero_when_the_overlay_cannot_be_imported(monkeypatch):
+    _run_main(monkeypatch, overlay="ha")
+    monkeypatch.setattr(cli, "bootstrap", mock.Mock(side_effect=ImportError("no overlay")))
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main()
+    assert exit_info.value.code == 1
+
+
+def test_main_returns_normally_on_a_clean_shutdown(monkeypatch):
+    _run_main(monkeypatch, overlay="none")
+    com = mock.Mock()  # run() returns → SIGTERM / clean stop
+    monkeypatch.setattr(
+        "enocean2mqtt.application.bootstrap.EnoceanDaemon", mock.Mock(return_value=com)
+    )
+    cli.main()  # no SystemExit

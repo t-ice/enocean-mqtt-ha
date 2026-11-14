@@ -204,3 +204,21 @@ async def test_send_pacing_disabled_by_default():
     await t.send(pkt)
     await t.send(pkt)
     assert slept == []
+
+
+async def test_send_that_waited_while_the_link_closed_reports_offline():
+    """close() during the pacing gap (reconnect / watchdog) → TransceiverOffline, not an
+    AttributeError on the vanished writer (found by the half-open end-to-end test)."""
+    from enocean2mqtt.ports.transceiver import TransceiverOffline
+
+    t = Ser2netLink("socket://127.0.0.1:3000", send_interval_s=0.1)
+    t._writer = FakeWriter()
+    t._next_send_at = float("inf")  # force a wait
+
+    async def sleep_while_closing(_seconds):
+        t._writer = None  # the connection goes away while this send waits
+
+    t._clock = lambda: 0.0
+    t._sleep = sleep_while_closing
+    with pytest.raises(TransceiverOffline):
+        await t.send(RadioPacket.create(0xF6, 0x02, 0x01, sender=[1, 2, 3, 4], R1=0, EB=1))
