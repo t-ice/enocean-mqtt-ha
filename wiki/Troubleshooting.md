@@ -79,7 +79,8 @@ itself. Work through this in order:
 
 ## Sender problems: an actuator doesn't react / `sender: auto` isn't replaced
 
-The add-on checks the `sender` addresses at startup. Search the **Log** for these messages:
+The add-on checks the `sender` addresses at startup. Search the **Log** for these messages (the
+range check and everything about `sender: auto` need version 1.1.0 or newer):
 
 | Log message | Meaning | What to do |
 |---|---|---|

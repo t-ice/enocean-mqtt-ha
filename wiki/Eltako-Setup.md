@@ -19,11 +19,14 @@ Use a different offset per actuator (`…81`, `…82`, `…83`, …). Never reus
 > **The offset has a limit.** A transceiver can only transmit from its **Base ID + 0 … 127** — 128
 > addresses in total. Offset 0 is the Base ID itself (used for devices without a `sender`), so pick
 > offsets **1 … 127** (`0x01`–`0x7F`) for your actuators. A large or arbitrary value is not a valid
-> sender — the add-on warns at startup about every `sender` outside the range. And the `sender` is **not** the actuator's own address and **not** the chip ID a
-> wall switch broadcasts — it is a *new* address (belonging to your stick) that you teach the actuator
-> to obey. See [[Base ID vs Chip ID|FAQ]].
+> sender — from version 1.1.0 the add-on warns at startup about every `sender` outside the range.
+> And the `sender` is **not** the actuator's own address and **not** the chip ID a wall switch
+> broadcasts — it is a *new* address (belonging to your stick) that you teach the actuator to obey.
+> See [[Base ID vs Chip ID|FAQ]].
 
 ## Let the add-on pick the sender (`sender: auto`)
+
+> **Requires add-on version 1.1.0 or newer.** Older versions refuse to start with `sender: auto`.
 
 Don't want to keep track of the offsets yourself? Write `auto` instead of an address:
 

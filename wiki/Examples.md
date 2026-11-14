@@ -29,7 +29,7 @@ devices:
     sender: 0xFFAE7C90
 ```
 
-### Any actuator — let the add-on pick the sender
+### Any actuator — let the add-on pick the sender (version 1.1.0+)
 ```yaml
 devices:
   - name: Licht_Flur
