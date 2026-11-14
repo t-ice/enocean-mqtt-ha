@@ -47,6 +47,8 @@ dev = [
     "vulture>=2.11",
     # Builds the documentation site (see mkdocs.yml + tools/build_docs_site.py).
     "mkdocs-material>=9.5",
+    # Property-based tests (ESP3 framing must survive arbitrary junk and chunk boundaries).
+    "hypothesis>=6.100",
 ]
 
 [project.scripts]
