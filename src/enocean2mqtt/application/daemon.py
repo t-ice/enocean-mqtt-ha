@@ -47,12 +47,46 @@ _BASE_ID_TIMEOUT = 10.0
 _STATS_INTERVAL = 60.0
 # Ignore absurdly large inbound MQTT payloads before parsing (defense-in-depth on the local broker).
 _MAX_MQTT_PAYLOAD = 65536
+# Transceiver liveness watchdog. A half-open TCP link (Pi lost power) or a hung USB stick delivers
+# nothing and raises nothing, so silence alone can't be told apart from a quiet radio. After
+# _IDLE_PROBE_AFTER seconds without a single packet the daemon pings the stick with CO_RD_VERSION —
+# a local serial command, no radio telegram, no duty-cycle cost. No answer within _PROBE_TIMEOUT
+# means the link is dead: the connection is closed and the normal reconnect loop takes over.
+_IDLE_PROBE_AFTER = 120.0
+_PROBE_TIMEOUT = 10.0
+_WATCHDOG_TICK = 5.0
 
 logger = logging.getLogger("enocean2mqtt.application.daemon")
 
 
 class _ShutdownRequested(Exception):  # noqa: N818 - control-flow signal, not an error condition
     """Raised inside the run TaskGroup to unwind the I/O tasks on SIGINT/SIGTERM."""
+
+
+class _Expected:
+    """One RESPONSE the transceiver still owes us, tagged with what it answers.
+
+    ESP3 responses carry no command id; they arrive in send order. Entries compare by identity, so a
+    send that fails removes exactly its own entry and the order of the others stays intact.
+    """
+
+    __slots__ = ("kind",)
+
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+
+    def __repr__(self) -> str:
+        return f"<expect {self.kind}>"
+
+
+class _RadioLink:
+    """Transport facade for the encoder: books every radio telegram for its RESPONSE."""
+
+    def __init__(self, daemon: "EnoceanDaemon") -> None:
+        self._daemon = daemon
+
+    async def send(self, packet) -> None:
+        await self._daemon._transmit(packet, "radio")
 
 
 class EnoceanDaemon:
@@ -82,7 +116,9 @@ class EnoceanDaemon:
         # setup enocean communication (local serial device or ser2net TCP, auto-detected). The send
         # interval paces command bursts so the transceiver doesn't drop telegrams (default 100 ms).
         self._transport = transceiver if transceiver is not None else self._build_transceiver()
-        self._encoder = PacketEncoder(self._transport)
+        # The encoder sends through _transmit (via _RadioLink), so every radio telegram's RESPONSE
+        # is booked in send order and can't be mistaken for the answer to a handshake command.
+        self._encoder = PacketEncoder(_RadioLink(self))
         # Let the encoder persist advanced outbound rolling codes via the same hook as RX.
         self._encoder.on_secure_state_change = self._notify_secure_state
         self._publisher = MqttPublisher(self._mqtt)
@@ -121,13 +157,29 @@ class EnoceanDaemon:
         self._unknown_senders = 0
         self._mqtt_reconnects = 0
         self._transceiver_reconnects = 0
+        # MQTT messages / telegrams whose handling raised (logged and skipped, never fatal), and
+        # commands that could not be sent because the transceiver was offline.
+        self._processing_errors = 0
+        self._commands_dropped = 0
+
+        # Topics (re)subscribed on every broker connect. The client starts each connection with a
+        # clean session, so a subscription made only once would silently vanish after a reconnect.
+        self._subscriptions: dict[str, None] = {}  # insertion-ordered set
+
+        # Transceiver liveness watchdog (see _IDLE_PROBE_AFTER); clock + sleep injectable for tests.
+        self._clock = time.monotonic
+        self._sleep = asyncio.sleep
+        self._idle_probe_after = _IDLE_PROBE_AFTER
+        self._probe_timeout = _PROBE_TIMEOUT
+        self._watchdog_tick = _WATCHDOG_TICK
+        self._last_rx = self._clock()
 
         # async coordination state
         self._shutdown = asyncio.Event()
         self._base_id_ready = asyncio.Event()
-        # ESP3 RESPONSE packets carry no command echo — they are correlated to the commands we sent
-        # purely by order. This FIFO records what each pending response is for.
-        self._pending_cmd = deque()
+        # ESP3 RESPONSE packets carry no command echo — they are correlated to what we sent purely
+        # by order. This FIFO holds one _Expected per write to the transceiver (see _transmit).
+        self._pending_cmd: deque[_Expected] = deque()
 
     def _build_transceiver(self):
         """Construct the EnOcean transceiver from config (serial or ser2net TCP, auto-detected)."""
@@ -189,8 +241,20 @@ class EnoceanDaemon:
         await self._publish(topic, payload, retain=retain)
 
     async def subscribe(self, topic):
-        """Subscribe on the active MQTT client (overlay-facing)."""
+        """Subscribe now and again after every broker reconnect (overlay-facing)."""
+        self._subscriptions[topic] = None
         await self._subscribe(topic)
+
+    async def add_sensor(self, sensor):
+        """Add a device at runtime (teach-in): decode its telegrams and accept its commands now.
+
+        Appending to ``sensors`` alone is not enough — the ``<name>/req/#`` command topic is
+        otherwise only subscribed on the next broker connect, so HA's commands would be dropped.
+        """
+        sensor = Sensor.from_dict(sensor)
+        self.sensors.append(sensor)
+        await self.subscribe(sensor.name + "/req/#")
+        return sensor
 
     @property
     def bus(self):
@@ -218,11 +282,30 @@ class EnoceanDaemon:
         await self._publish(self._bridge_state_topic, "online", retain=True)
         # listen to enocean send requests
         for cur_sensor in self.sensors:
-            await self._subscribe(cur_sensor.name + "/req/#")
+            self._subscriptions[cur_sensor.name + "/req/#"] = None
+        # Re-subscribe everything ever subscribed (device commands + the overlay's topics): this is
+        # a fresh session, the broker has forgotten the previous connection's subscriptions.
+        for topic in list(self._subscriptions):
+            await self._subscribe(topic)
         if self.overlay is not None:
             await self.overlay.after_connect()
 
     async def _handle_mqtt(self, topic, payload):
+        """Handle one PUBLISH message; an error in it is logged and skipped, never fatal.
+
+        Payloads come from automations and templates. Before this guard, one malformed command
+        raised out of the MQTT task, tore down the TaskGroup and ended the whole add-on. Broker
+        errors (``MqttError``) still propagate, so the reconnect loop keeps working.
+        """
+        try:
+            await self._dispatch_mqtt(topic, payload)
+        except aiomqtt.MqttError:
+            raise
+        except Exception:
+            self._processing_errors += 1
+            logger.exception("Error handling MQTT message on %s — message ignored", topic)
+
+    async def _dispatch_mqtt(self, topic, payload):
         """Dispatch a PUBLISH message received from the MQTT server."""
         # An overlay may claim a message (e.g. HA system/discovery-delete topics) before dispatch.
         if self.overlay is not None and await self.overlay.intercept_inbound(topic, payload):
@@ -335,14 +418,22 @@ class EnoceanDaemon:
                 sensor.get("name", "?"),
             )
             return
-        await self._encoder.send(
-            sensor,
-            destination,
-            command=command,
-            negate_direction=negate_direction,
-            learn_data=learn_data,
-            default_sender=self.enocean_sender,
-        )
+        try:
+            await self._encoder.send(
+                sensor,
+                destination,
+                command=command,
+                negate_direction=negate_direction,
+                learn_data=learn_data,
+                default_sender=self.enocean_sender,
+            )
+        except (ConnectionError, OSError) as exc:
+            # Transceiver reconnecting (Pi reboot, ser2net restart) or the write failed. Dropped,
+            # not queued: a cover command executed half a minute late is worse than none at all.
+            self._commands_dropped += 1
+            logger.warning(
+                "Command for %s not sent: transceiver offline (%s)", sensor.get("name", "?"), exc
+            )
 
     def _match_sensor(self, packet):
         """Return the configured sensor matching *packet*'s address (and RORG, unless ignored)."""
@@ -422,9 +513,16 @@ class EnoceanDaemon:
             else self.enocean_sender
         ) or [0, 0, 0, 0]
         opt = [0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00]  # subtel, broadcast dest, dBm, no security
-        for body in (msg1, msg2):
-            data = [RORG.SEC_TI, *body, *sender, 0x00]
-            await self._transport.send(RadioPacket(PACKET.RADIO_ERP1, data=data, optional=opt))
+        try:
+            for body in (msg1, msg2):
+                data = [RORG.SEC_TI, *body, *sender, 0x00]
+                await self._transmit(
+                    RadioPacket(PACKET.RADIO_ERP1, data=data, optional=opt), "radio"
+                )
+        except (ConnectionError, OSError) as exc:
+            self._commands_dropped += 1
+            logger.warning("Command for %s not sent: transceiver offline (%s)", sensor.name, exc)
+            return
         logger.info("sent secure teach-in for %s", sensor.name)
 
     async def _handle_secure_teach_in(self, packet):
@@ -584,6 +682,8 @@ class EnoceanDaemon:
             "repeater_level": self.repeater_level,
             "duty_cycle_available": self.duty_cycle_available,
             "transmit_failures": self._transmit_failures,
+            "processing_errors": self._processing_errors,
+            "commands_dropped": self._commands_dropped,
         }
 
     async def _stats_task(self):
@@ -615,24 +715,98 @@ class EnoceanDaemon:
         """Read the transceiver, reconnecting with backoff on connection loss."""
         delay = _RECONNECT_MIN_DELAY
         while not self._shutdown.is_set():
+            watchdog = None
             try:
                 await self._transport.connect()
                 delay = _RECONNECT_MIN_DELAY  # connected → reset backoff
+                self._last_rx = self._clock()
+                watchdog = asyncio.create_task(self._liveness_watchdog())
                 await self._startup_handshake()
                 async for packet in self._transport.read_packets():
-                    await self._handle_enocean_packet(packet)
+                    await self._process_transceiver_packet(packet)
             except (OSError, ConnectionError) as exc:
                 self._transceiver_reconnects += 1
                 logger.warning("transceiver connection lost (%s); reconnecting in %ss", exc, delay)
             except Exception:
                 logger.exception("unexpected transceiver error")
             finally:
+                if watchdog is not None:
+                    watchdog.cancel()
+                    # wait() (unlike awaiting the task) neither raises the watchdog's
+                    # CancelledError nor swallows a cancellation of this task.
+                    await asyncio.wait({watchdog})
                 await self._transport.close()
 
             if self._shutdown.is_set():
                 break
             await asyncio.sleep(delay)
             delay = min(delay * 2, _RECONNECT_MAX_DELAY)
+
+    async def _process_transceiver_packet(self, packet):
+        """Handle one packet; an error in it is logged and skipped instead of dropping the link.
+
+        Before, any exception (a decoder bug, an odd telegram) left the read loop and the
+        transceiver was disconnected and reconnected — telegrams arriving meanwhile were lost. A
+        real connection error still propagates and triggers the reconnect.
+        """
+        try:
+            await self._handle_enocean_packet(packet)
+        except (OSError, ConnectionError):
+            raise
+        except Exception:
+            self._processing_errors += 1
+            logger.exception("Error processing telegram %s — skipped", packet)
+
+    async def _liveness_watchdog(self):
+        """Ping a silent transceiver; close the link if it stays silent (see _IDLE_PROBE_AFTER)."""
+        probe_sent_at = None
+        packets_at_probe = 0
+        while True:
+            await self._sleep(self._watchdog_tick)
+            now = self._clock()
+            if probe_sent_at is not None and self._telegrams_total != packets_at_probe:
+                probe_sent_at = None  # something arrived since the ping: the link is alive
+            if probe_sent_at is None:
+                if now - self._last_rx < self._idle_probe_after:
+                    continue
+                logger.debug("transceiver silent for %.0fs; sending a ping", now - self._last_rx)
+                probe_sent_at, packets_at_probe = now, self._telegrams_total
+                try:
+                    await self._transmit(
+                        Packet.create_common_command(COMMON_COMMAND_CODE.CO_RD_VERSION), "ping"
+                    )
+                except (ConnectionError, OSError) as exc:
+                    logger.warning("Transceiver not responding (%s) — reconnecting", exc)
+                    await self._transport.close()
+                    return
+            elif now - probe_sent_at >= self._probe_timeout:
+                logger.warning(
+                    "Transceiver not responding (no answer to a ping within %.0fs) — reconnecting",
+                    self._probe_timeout,
+                )
+                # Closing ends the pending read with EOF → ConnectionError → normal reconnect loop.
+                await self._transport.close()
+                return
+
+    def _expect(self, kind: str) -> _Expected:
+        """Book a RESPONSE of *kind*; call right before the matching write (see _transmit)."""
+        entry = _Expected(kind)
+        self._pending_cmd.append(entry)
+        return entry
+
+    async def _transmit(self, packet, kind: str):
+        """Write *packet* to the transceiver and book its RESPONSE (every ESP3 write gets one).
+
+        Booking and write stay in the same order because nothing awaits between them before the
+        transport's FIFO-fair send lock is requested. A failed write un-books its own entry.
+        """
+        entry = self._expect(kind)
+        try:
+            await self._transport.send(packet)
+        except BaseException:
+            with contextlib.suppress(ValueError):
+                self._pending_cmd.remove(entry)
+            raise
 
     async def _startup_handshake(self):
         """Query transceiver identity + controller config after (re)connect; apply the repeater.
@@ -643,36 +817,27 @@ class EnoceanDaemon:
         best-effort: a silent/old transceiver just leaves the field unset.
         """
         self._pending_cmd.clear()
+        command = Packet.create_common_command
         first = self.enocean_sender is None
         if first:
             # Identity + Base ID: only needed once (the Base ID doesn't change across reconnects).
-            self._pending_cmd.append("version")
-            await self._transport.send(
-                Packet.create_common_command(COMMON_COMMAND_CODE.CO_RD_VERSION)
-            )
-            self._pending_cmd.append("idbase")
-            await self._transport.send(
-                Packet.create_common_command(COMMON_COMMAND_CODE.CO_RD_IDBASE)
-            )
+            await self._transmit(command(COMMON_COMMAND_CODE.CO_RD_VERSION), "version")
+            await self._transmit(command(COMMON_COMMAND_CODE.CO_RD_IDBASE), "idbase")
             # Apply the configured repeater once (1/2 = enable; off is the default, not written).
             want = self.conf.repeater_level
             if want:
-                self._pending_cmd.append("repeater_set")
-                await self._transport.send(
-                    Packet.create_common_command(COMMON_COMMAND_CODE.CO_WR_REPEATER, 1, want)
+                await self._transmit(
+                    command(COMMON_COMMAND_CODE.CO_WR_REPEATER, 1, want), "repeater_set"
                 )
         # Controller diagnostics: refresh on every connect.
-        self._pending_cmd.append("repeater")
-        await self._transport.send(Packet.create_common_command(COMMON_COMMAND_CODE.CO_RD_REPEATER))
-        self._pending_cmd.append("dutycycle")
-        await self._transport.send(
-            Packet.create_common_command(COMMON_COMMAND_CODE.CO_RD_DUTYCYCLE_LIMIT)
-        )
+        await self._transmit(command(COMMON_COMMAND_CODE.CO_RD_REPEATER), "repeater")
+        await self._transmit(command(COMMON_COMMAND_CODE.CO_RD_DUTYCYCLE_LIMIT), "dutycycle")
 
     async def _handle_enocean_packet(self, packet):
         """Dispatch a packet read from the transceiver."""
         self._telegrams_total += 1
         self._telegrams_window += 1
+        self._last_rx = self._clock()  # any packet proves the link alive (liveness watchdog)
         # Stamp arrival time (used for the _DATE_ field); the threaded reader used to do this.
         packet.received = datetime.datetime.now()
 
@@ -683,7 +848,7 @@ class EnoceanDaemon:
             else:
                 response = packet.create_response_packet(self.enocean_sender)
                 logger.info("Sending response to UTE teach-in.")
-                await self._transport.send(response)
+                await self._transmit(response, "radio")
                 # Let an overlay auto-provision the taught device (HA learn mode). Best-effort:
                 # a failure here must not stop the ack/decode path.
                 if self.overlay is not None and hasattr(self.overlay, "on_teach_in"):
@@ -707,8 +872,16 @@ class EnoceanDaemon:
 
     def _handle_response_packet(self, packet):
         """Route an ESP3 RESPONSE to the command it answers (matched by send order)."""
-        tag = self._pending_cmd.popleft() if self._pending_cmd else None
-        if tag == "version":
+        tag = self._pending_cmd.popleft().kind if self._pending_cmd else None
+        ok = getattr(packet, "response", None) == RETURN_CODE.OK
+        if tag == "radio":
+            if not ok:
+                # The stick refused the telegram (busy, duty-cycle lock) — used to be invisible.
+                self._transmit_failures += 1
+                logger.warning("Transceiver rejected a telegram (%s)", self._return_code(packet))
+        elif tag == "ping":
+            logger.debug("transceiver answered the liveness ping")
+        elif tag == "version":
             self._read_version_response(packet)
         elif tag == "idbase":
             self._read_base_id_response(packet)
@@ -717,11 +890,19 @@ class EnoceanDaemon:
         elif tag == "dutycycle":
             self._read_dutycycle_response(packet)
         elif tag == "repeater_set":
-            ok = getattr(packet, "response", None) == RETURN_CODE.OK
             logger.info("repeater configuration %s", "applied" if ok else f"rejected ({packet})")
         else:
-            code = RETURN_CODE(packet.data[0]).name if packet.data else "?"
-            logger.info("got response packet: %s", code)
+            logger.info("got response packet: %s", self._return_code(packet))
+
+    @staticmethod
+    def _return_code(packet):
+        """Readable ESP3 return code of a RESPONSE (its number if it isn't a known code)."""
+        if not packet.data:
+            return "?"
+        try:
+            return RETURN_CODE(packet.data[0]).name
+        except ValueError:
+            return f"0x{packet.data[0]:02X}"
 
     def _handle_event_packet(self, packet):
         """React to ESP3 EVENT packets (F2 — duty-cycle / transmit health, and controller-ready)."""

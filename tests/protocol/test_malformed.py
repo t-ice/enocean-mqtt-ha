@@ -72,17 +72,29 @@ def test_parse_eep_unknown_profile_is_safe(func, type_):
         pass  # other benign outcomes are fine; the point is no IndexError/KeyError crash
 
 
-def test_data_crc_error_skips_exactly_one_frame():
-    """When only the data CRC is wrong the header length is valid, so the boundary is known and
-    the parser drops exactly that frame and recovers the next one."""
+def _parse_all(buf):
+    """Run parse_msg over *buf* until it needs more bytes; return the packets it produced."""
+    packets = []
+    while True:
+        status, buf, packet = Packet.parse_msg(buf)
+        if status == PARSE_RESULT.INCOMPLETE:
+            return packets
+        if status == PARSE_RESULT.OK:
+            packets.append(packet)
+
+
+def test_data_crc_error_drops_the_bad_frame_and_recovers_the_next():
+    """Only the data CRC is wrong: the bad frame yields nothing and the next frame is recovered.
+
+    The parser now skips just the sync byte (a passing header CRC can be chance), then resyncs —
+    the observable outcome is unchanged: exactly the one valid telegram comes out."""
     corrupt = list(TEMPERATURE)
     corrupt[-1] ^= 0xFF  # break only the data CRC; the header (length) stays valid
     buf = corrupt + list(TEMPERATURE)
 
-    status, remaining, packet = Packet.parse_msg(buf)
+    status, remaining, _ = Packet.parse_msg(buf)
     assert status == PARSE_RESULT.CRC_MISMATCH
-    assert remaining == list(TEMPERATURE)  # skipped exactly the bad frame
+    assert remaining == buf[1:]  # only the sync byte consumed
 
-    status, _, packet = Packet.parse_msg(remaining)
-    assert status == PARSE_RESULT.OK
-    assert packet.rorg == 0xA5
+    packets = _parse_all(buf)
+    assert len(packets) == 1 and packets[0].rorg == 0xA5

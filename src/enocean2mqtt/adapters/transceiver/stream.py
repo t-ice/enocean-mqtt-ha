@@ -14,6 +14,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 
+from enocean2mqtt.ports.transceiver import TransceiverOffline
 from enocean2mqtt.protocol.constants import PARSE_RESULT
 from enocean2mqtt.protocol.packet import Packet
 
@@ -50,7 +51,10 @@ class StreamTransceiver:
         if self._reader is None:
             raise RuntimeError("connect() must be called before read_packets()")
         while True:
-            chunk = await self._reader.read(_READ_CHUNK)
+            reader = self._reader
+            if reader is None:  # close() ran meanwhile (e.g. the liveness watchdog gave up)
+                raise ConnectionError("transceiver connection closed")
+            chunk = await reader.read(_READ_CHUNK)
             if not chunk:
                 raise ConnectionError("transceiver closed the connection")
             self._buffer.extend(chunk)
@@ -75,14 +79,20 @@ class StreamTransceiver:
         telegrams actually bunch up, so an isolated send never waits.
         """
         if self._writer is None:
-            raise RuntimeError("connect() must be called before send()")
+            # A normal state during a reconnect, not a programming error: callers drop the telegram.
+            raise TransceiverOffline("transceiver not connected")
         async with self._send_lock:
             if self._send_interval:
                 wait = self._next_send_at - self._clock()
                 if wait > 0:
                     await self._sleep(wait)
-            self._writer.write(bytes(bytearray(packet.build())))
-            await self._writer.drain()
+            # Re-check after waiting for the lock / the pacing gap: close() may have run meanwhile
+            # (reconnect, liveness watchdog) — that is "offline", not an AttributeError on None.
+            writer = self._writer
+            if writer is None:
+                raise TransceiverOffline("transceiver connection closed while sending")
+            writer.write(bytes(bytearray(packet.build())))
+            await writer.drain()
             if self._send_interval:
                 self._next_send_at = self._clock() + self._send_interval
 

@@ -8,6 +8,13 @@ from typing import Protocol, runtime_checkable
 from enocean2mqtt.protocol.packet import Packet
 
 
+class TransceiverOffline(ConnectionError):  # noqa: N818 - reads as a state, like ConnectionError
+    """Raised by ``send`` while there is no connection (e.g. during a reconnect).
+
+    A ``ConnectionError`` subclass, so callers that already handle a dropped link handle this too.
+    """
+
+
 @runtime_checkable
 class TransceiverPort(Protocol):
     """A bidirectional ESP3 link to the transceiver (local serial device or ser2net TCP port)."""
@@ -21,7 +28,7 @@ class TransceiverPort(Protocol):
         ...
 
     async def send(self, packet: Packet) -> None:
-        """Serialise and transmit *packet*."""
+        """Serialise and transmit *packet* (raises ``TransceiverOffline`` when not connected)."""
         ...
 
     async def close(self) -> None:

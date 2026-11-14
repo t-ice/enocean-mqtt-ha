@@ -67,13 +67,18 @@ async def test_close_swallows_wait_closed_error():
 
 
 async def test_read_and_send_require_connect_first():
-    """Guards survive `python -O` (no bare asserts): explicit RuntimeError before connect()."""
+    """Guards survive `python -O` (no bare asserts). Reading before connect() is a programming
+    error; sending while not connected is a normal state during a reconnect — TransceiverOffline,
+    a ConnectionError the daemon handles by dropping the telegram."""
+    from enocean2mqtt.ports.transceiver import TransceiverOffline
+
     link = Ser2netLink("socket://h:3000")
     with pytest.raises(RuntimeError, match="connect"):
         async for _ in link.read_packets():
             break
-    with pytest.raises(RuntimeError, match="connect"):
+    with pytest.raises(TransceiverOffline):
         await link.send(None)
+    assert issubclass(TransceiverOffline, ConnectionError)
 
 
 async def test_read_buffer_resyncs_on_overflow(monkeypatch):

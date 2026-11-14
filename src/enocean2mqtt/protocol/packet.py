@@ -106,35 +106,49 @@ class Packet:
         # Work on a plain list of ints from the sync byte on (bytes/bytearray both iterate ints).
         buf = list(buf)
         buf = buf[buf.index(0x55) :]
-        try:
-            data_len = (buf[1] << 8) | buf[2]
-            opt_len = buf[3]
-        except IndexError:
-            # If the fields don't exist, message is incomplete
+        if len(buf) < 6:
+            # Sync byte + 4 header bytes + header CRC not complete yet
             return ParseResult(PARSE_RESULT.INCOMPLETE, buf, None)
+
+        # Validate the header BEFORE trusting its length. A 0x55 inside a half-received frame (e.g.
+        # right after a ser2net connect) is not a real sync byte; its "length" is noise of up to
+        # 64 KB, and waiting for that many bytes held back every real telegram behind it. On a bad
+        # header CRC only this sync byte is dropped and the search restarts at the next 0x55 —
+        # the resync the ESP3 spec prescribes. Routine on noisy links, so DEBUG, not ERROR spam.
+        if buf[5] != crc8.calc(buf[1:5]):
+            Packet.logger.debug("Header CRC error, resyncing: %s", bytes(buf[:6]).hex(" "))
+            return ParseResult(PARSE_RESULT.CRC_MISMATCH, buf[1:], None)
+
+        data_len = (buf[1] << 8) | buf[2]
+        opt_len = buf[3]
 
         # Header: 6 bytes, data, optional data and data checksum
         msg_len = 6 + data_len + opt_len + 1
         if len(buf) < msg_len:
+            # A junk header still passes its CRC 1 time in 256, and waiting for its made-up length
+            # would stall the stream again. If a complete, fully valid frame already follows inside
+            # the bytes we are waiting on, this header was not real: resync past its sync byte.
+            if any(Packet._valid_frame_at(buf, i) for i in range(1, len(buf)) if buf[i] == 0x55):
+                Packet.logger.debug(
+                    "Header claims %d bytes but a complete frame follows; resyncing", msg_len
+                )
+                return ParseResult(PARSE_RESULT.CRC_MISMATCH, buf[1:], None)
             # If buffer isn't long enough, the message is incomplete
             return ParseResult(PARSE_RESULT.INCOMPLETE, buf, None)
 
         msg = buf[0:msg_len]
-        buf = buf[msg_len:]
 
         packet_type = msg[4]
         data = msg[6 : 6 + data_len]
         opt_data = msg[6 + data_len : 6 + data_len + opt_len]
 
-        # Check CRCs for header and data
-        if msg[5] != crc8.calc(msg[1:5]):
-            # Routine on noisy radio — the read loop resyncs past the bad frame. Log at DEBUG
-            # (log_level: debug) with the raw header bytes for diagnosis, not as ERROR spam.
-            Packet.logger.debug("Header CRC error, discarding frame: %s", bytes(msg[:6]).hex(" "))
-            return ParseResult(PARSE_RESULT.CRC_MISMATCH, buf, None)
         if msg[6 + data_len + opt_len] != crc8.calc(msg[6 : 6 + data_len + opt_len]):
-            Packet.logger.debug("Data CRC error, discarding frame: %s", bytes(msg).hex(" "))
-            return ParseResult(PARSE_RESULT.CRC_MISMATCH, buf, None)
+            # The header CRC passes for 1 in 256 random byte runs, so the length may still be junk:
+            # skip only the sync byte, never the claimed length (that could swallow real frames).
+            Packet.logger.debug("Data CRC error, resyncing: %s", bytes(msg).hex(" "))
+            return ParseResult(PARSE_RESULT.CRC_MISMATCH, buf[1:], None)
+
+        buf = buf[msg_len:]
 
         # If we got this far, everything went ok (?)
         if packet_type == PACKET.RADIO_ERP1:
@@ -151,6 +165,14 @@ class Packet:
             packet = Packet(packet_type, data, opt_data)
 
         return ParseResult(PARSE_RESULT.OK, buf, packet)
+
+    @staticmethod
+    def _valid_frame_at(buf, start):
+        """True if a complete ESP3 frame with valid header AND data CRC begins at *buf[start]*."""
+        if len(buf) - start < 7 or buf[start + 5] != crc8.calc(buf[start + 1 : start + 5]):
+            return False
+        end = start + 6 + ((buf[start + 1] << 8) | buf[start + 2]) + buf[start + 3]
+        return end < len(buf) and buf[end] == crc8.calc(buf[start + 6 : end])
 
     @staticmethod
     def create_common_command(command_code, *payload):

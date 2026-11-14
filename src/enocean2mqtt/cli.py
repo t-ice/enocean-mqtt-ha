@@ -166,7 +166,7 @@ def main():
         com = bootstrap(conf, sensors)
     except ImportError:
         logger.error("Unable to import Home Assistant overlay")
-        return
+        sys.exit(1)
 
     # start working
     try:
@@ -175,6 +175,9 @@ def main():
     # catch all possible exceptions
     except Exception:  # pylint: disable=broad-except,bare-except
         logger.exception("Unhandled error; shutting down")
+        # Non-zero, so the Supervisor sees a failure (exit 0 reads as a clean stop): with the
+        # add-on's Watchdog switched on, it restarts the add-on.
+        sys.exit(1)
 
 
 # check for execution

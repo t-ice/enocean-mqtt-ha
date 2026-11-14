@@ -146,5 +146,7 @@ bashio::log.green "Starting EnOcean-MQTT-Eltako (connection: ${CONNECTION})"
 # The daemon runs a single asyncio event loop that connects to the MQTT broker and the
 # transceiver and self-heals connection drops (reconnect with exponential backoff), so run.sh
 # needs no reachability probe or restart loop — a Raspberry Pi power-cycle or ser2net restart is
-# recovered from inside the process. If the daemon ever exits, s6 restarts the service.
+# recovered from inside the process. There is no process supervisor inside the container
+# (init: false): if the daemon dies it exits non-zero, and the Supervisor restarts the add-on when
+# its Watchdog switch is on.
 exec enocean2mqtt --log-level "${LOG_LEVEL}" --logfile "${LOG_FILE}" "${CONFIG_FILE}" "${DEVICE_ARGS[@]}"

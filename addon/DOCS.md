@@ -50,8 +50,13 @@ secure transmit. If a device sends a **PSK-encrypted** teach-in, set the `secure
 ## Diagnostics
 
 The bridge device exposes the transceiver's firmware/chip-id, repeater level, available TX
-duty-cycle %, and a transmit-failures counter as diagnostic sensors, plus `bridge/state` (online/
+duty-cycle %, and counters for transmit failures, skipped messages (processing errors) and commands
+dropped while the transceiver was offline as diagnostic sensors, plus `bridge/state` (online/
 offline) and `bridge/stats` (uptime, Base ID, reconnects).
+
+**Turn on the add-on's Watchdog switch** (add-on page, *Info* tab). Connection drops to the stick or
+the broker are handled inside the add-on; the watchdog is the safety net for the rare case that the
+add-on process itself ends — it then exits with an error and Home Assistant restarts it.
 
 > **Chip ID vs Base ID — they are not the same.** The **Chip ID** is the transceiver's immutable,
 > unique factory identity (shown as `chip-id`). The **Base ID** is a *separate*, (re-)writable address

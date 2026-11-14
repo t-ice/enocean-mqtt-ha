@@ -78,6 +78,12 @@ _BRIDGE_STATS = (
         {"unit_of_measurement": "%", "state_class": "measurement", "icon": "mdi:radio-tower"},
     ),
     ("transmit_failures", "Transmit failures", {"state_class": "total_increasing"}),
+    ("processing_errors", "Processing errors", {"state_class": "total_increasing"}),
+    (
+        "commands_dropped",
+        "Commands dropped (transceiver offline)",
+        {"state_class": "total_increasing"},
+    ),
 )
 
 
@@ -113,7 +119,9 @@ class HomeAssistantBridge:
         # after discovery already ran (late Base ID), and the task waiting for that late Base ID.
         self._sender_announcements: list[dict] = []
         self._late_assigned: list[Sensor] = []
-        self._late_sender_task = None
+        self._late_base_id_task = None
+        # LEARN switch + bridge diagnostics are keyed on the Base ID; published once it is known.
+        self._system_entities_published = False
         self._sender_range_checked = False
         self._learn_timer = None
 
@@ -190,13 +198,15 @@ class HomeAssistantBridge:
             # Queued for _flush_sender_updates: on a reconnect discovery has already run, so a
             # device assigned only now would otherwise never be announced.
             self._late_assigned.extend(self._resolve_senders())
-        elif self._pending_auto_sensors() and self._late_sender_task is None:
-            # No Base ID yet: 'sender: auto' devices stay unassigned (no discovery, no sending)
-            # and are picked up as soon as the transceiver identifies itself.
-            logger.warning(
-                "No Base ID yet — devices with 'sender: auto' stay inactive until it is known"
-            )
-            self._late_sender_task = asyncio.create_task(self._resolve_senders_when_ready())
+        elif self._late_base_id_task is None:
+            # No Base ID yet (e.g. the Pi with the stick boots slower than HA): everything keyed on
+            # it — 'sender: auto' devices, the LEARN switch, the bridge diagnostics — is finished as
+            # soon as the transceiver identifies itself.
+            if self._pending_auto_sensors():
+                logger.warning(
+                    "No Base ID yet — devices with 'sender: auto' stay inactive until it is known"
+                )
+            self._late_base_id_task = asyncio.create_task(self._finish_when_base_id_known())
 
     # =============================================================================================
     # SENDER IDs ('sender: auto' + range check)
@@ -319,15 +329,26 @@ class HomeAssistantBridge:
             )
         return saved
 
-    async def _resolve_senders_when_ready(self):
-        """Late Base ID: assign the waiting 'sender: auto' devices once the transceiver answers."""
+    async def _finish_when_base_id_known(self):
+        """Late Base ID: assign 'sender: auto' devices + add the LEARN switch and diagnostics."""
         await self._daemon.base_id_ready.wait()
+        # Nobody awaits this background task, so an error would vanish without a trace.
         try:
             self._late_assigned.extend(self._resolve_senders())
             await self._flush_sender_updates()
         except Exception:
-            # Nobody awaits this background task, so an error would vanish without a trace.
             logger.exception("Assigning the 'sender: auto' devices failed")
+        try:
+            # Before the first connect, after_connect publishes them at its end; while the broker is
+            # away a publish would be dropped silently, so the next after_connect does it instead.
+            if not self._first_mqtt_connect and self._daemon.bus.connected:
+                if not self._system_entities_published:
+                    logger.info(
+                        "Base ID arrived late — adding the LEARN switch and diagnostics now"
+                    )
+                await self._publish_system_entities()
+        except Exception:
+            logger.exception("Adding the LEARN switch and diagnostics failed")
 
     async def _flush_sender_updates(self):
         """Publish what a sender assignment owes MQTT: late discovery + the assignment notice.
@@ -355,21 +376,39 @@ class HomeAssistantBridge:
             )
 
     async def after_connect(self):
-        """On the first broker connect only: run discovery + publish the LEARN button and covers."""
+        """On the first broker connect only: run discovery + publish the LEARN button and covers.
+
+        Subscriptions need no repeating here: the daemon re-subscribes every topic on each connect.
+        """
         if not self._first_mqtt_connect:
             await self._flush_sender_updates()  # senders assigned since the last connect
+            await self._publish_system_entities()  # no-op once published
             return
         await self._sync_sensor_discovery()
         if self._daemon.enocean_sender is None:
-            # The transceiver never reported a Base ID (see before_connect's timeout). The LEARN
-            # button and bridge-stats entities are keyed on it, so skip them rather than crash.
-            # This usually means the configured 'device' isn't the EnOcean stick (e.g. a host
-            # console UART like /dev/ttyS0) or the port/endpoint is wrong.
+            # The transceiver hasn't reported a Base ID (see before_connect's timeout). The LEARN
+            # button and bridge-stats entities are keyed on it: they follow once it arrives (see
+            # _finish_when_base_id_known). If it never does, the configured 'device' usually isn't
+            # the EnOcean stick (e.g. a host console UART like /dev/ttyS0) or the endpoint is wrong.
             logger.error(
-                "Transceiver reported no Base ID — skipping the LEARN button and bridge-stats "
-                "entities. Check the 'device' path (is it really the EnOcean stick?) or use 'tcp'."
+                "Transceiver reported no Base ID yet — the LEARN button and bridge-stats entities "
+                "are added once it does. If this persists, check the 'device' path (is it really "
+                "the EnOcean stick?) or use 'tcp'."
             )
-        else:
+        await self._publish_cover_shut_times()
+        await self._publish_cover_positions()
+        self._first_mqtt_connect = False
+        # Only after the flag flips: a Base ID arriving from here on is handled by the late task,
+        # one arriving before is picked up right here — no window in which neither publishes.
+        await self._publish_system_entities()
+        await self._flush_sender_updates()
+
+    async def _publish_system_entities(self):
+        """Publish the LEARN button (+ status) and the bridge diagnostics: once, Base ID known."""
+        if self._system_entities_published or self._daemon.enocean_sender is None:
+            return
+        self._system_entities_published = True  # set first: the late task may run concurrently
+        try:
             # Add the LEARN button + publish its status (must follow the button's discovery).
             await self._mqtt_discovery_system("learn")
             await self._daemon.publish(
@@ -378,10 +417,9 @@ class HomeAssistantBridge:
                 retain=True,
             )
             await self._mqtt_discovery_stats()
-        await self._publish_cover_shut_times()
-        await self._publish_cover_positions()
-        self._first_mqtt_connect = False
-        await self._flush_sender_updates()
+        except BaseException:
+            self._system_entities_published = False  # retried on the next connect
+            raise
 
     async def intercept_inbound(self, topic, payload) -> bool:
         """Claim system + discovery-delete topics; return True if handled (base skips dispatch)."""
@@ -653,7 +691,8 @@ class HomeAssistantBridge:
         entry = {"name": name, "address": address, "rorg": rorg, "func": func, "type": type_}
         # expand() applies the forced HA flags + overlays the EEP's device_config (for actuators).
         [new_sensor] = SensorExpander(self._ha_mapping).expand([Sensor.from_dict(dict(entry))])
-        self._daemon.sensors.append(new_sensor)
+        # add_sensor also subscribes its command topic, so HA can control it right away.
+        new_sensor = await self._daemon.add_sensor(new_sensor)
         logger.info(
             "Auto-provisioned EnOcean device %s (EEP %02X-%02X-%02X)", name, rorg, func, type_
         )
@@ -712,7 +751,7 @@ class HomeAssistantBridge:
             "slf": teach_in.slf,
         }
         [new_sensor] = SensorExpander(self._ha_mapping).expand([Sensor.from_dict(dict(entry))])
-        self._daemon.sensors.append(new_sensor)
+        new_sensor = await self._daemon.add_sensor(new_sensor)
         logger.info("Auto-provisioned secure device %s (F6-02-01)", name)
         _uid, _db_name, discover = self._discovery_identity(new_sensor)
         await discover(new_sensor, None)

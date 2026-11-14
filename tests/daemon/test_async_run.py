@@ -47,7 +47,7 @@ async def test_enocean_task_reconnects_after_drop(com, monkeypatch):
 
 async def test_base_id_response_sets_sender(com):
     """A CO_RD_IDBASE response populates enocean_sender and releases discovery."""
-    com._pending_cmd.append("idbase")  # as _startup_handshake enqueues after sending the command
+    com._expect("idbase")  # as _startup_handshake enqueues after sending the command
     pkt = ResponsePacket(PACKET.RESPONSE, data=[0x00, 0xFF, 0xAE, 0x7C, 0x80])  # 0x00 = OK
     assert not com._base_id_ready.is_set()
 
@@ -59,7 +59,7 @@ async def test_base_id_response_sets_sender(com):
 
 async def test_base_id_response_with_write_cycles_byte(com):
     """CO_RD_IDBASE may append a 'remaining write cycles' byte; the Base ID is still the first 4."""
-    com._pending_cmd.append("idbase")
+    com._expect("idbase")
     # return_code + 4-byte base id + 0xFF remaining-write-cycles (data-len 6)
     pkt = ResponsePacket(PACKET.RESPONSE, data=[0x00, 0xFF, 0xAE, 0x7C, 0x80, 0xFF])
 
@@ -71,7 +71,7 @@ async def test_base_id_response_with_write_cycles_byte(com):
 
 async def test_version_response_populates_stick_identity(com):
     """A CO_RD_VERSION response fills the stick identity fields (non-gating)."""
-    com._pending_cmd.append("version")
+    com._expect("version")
     # RC + app(4) + api(4) + chip_id(4) + chip_ver(4) + app description (padded)
     data = [0x00, 2, 5, 3, 0, 1, 8, 0, 0, 0x01, 0x2D, 0x8C, 0x9F, 3, 1, 0, 0] + [0x00] * 16
     pkt = ResponsePacket(PACKET.RESPONSE, data=data)
@@ -95,7 +95,7 @@ async def test_handshake_queries_identity_and_controller_config(com):
 
     sent = [call.args[0].data[0] for call in com._transport.send.await_args_list]
     assert sent == [CC.CO_RD_VERSION, CC.CO_RD_IDBASE, CC.CO_RD_REPEATER, CC.CO_RD_DUTYCYCLE_LIMIT]
-    assert list(com._pending_cmd) == ["version", "idbase", "repeater", "dutycycle"]
+    assert [e.kind for e in com._pending_cmd] == ["version", "idbase", "repeater", "dutycycle"]
 
 
 async def test_handshake_applies_configured_repeater():
@@ -115,7 +115,7 @@ async def test_handshake_applies_configured_repeater():
     ]
     assert len(wr) == 1
     assert wr[0].data[1:3] == [1, 2]  # enable=1, level=2
-    assert "repeater_set" in com._pending_cmd
+    assert "repeater_set" in [e.kind for e in com._pending_cmd]
 
 
 def test_secure_packet_decrypts_to_inner(com):
@@ -339,18 +339,18 @@ async def test_ute_teach_in_notifies_overlay(com):
 
 async def test_repeater_response_parsed(com):
     """CO_RD_REPEATER response (enable + level) fills repeater_level; enable=0 → off (0)."""
-    com._pending_cmd.append("repeater")
+    com._expect("repeater")
     await com._handle_enocean_packet(ResponsePacket(PACKET.RESPONSE, data=[0x00, 0x01, 0x02]))
     assert com.repeater_level == 2
 
-    com._pending_cmd.append("repeater")
+    com._expect("repeater")
     await com._handle_enocean_packet(ResponsePacket(PACKET.RESPONSE, data=[0x00, 0x00, 0x01]))
     assert com.repeater_level == 0
 
 
 async def test_dutycycle_response_parsed(com):
     """CO_RD_DUTYCYCLE_LIMIT response = OK + available-percent byte."""
-    com._pending_cmd.append("dutycycle")
+    com._expect("dutycycle")
     await com._handle_enocean_packet(ResponsePacket(PACKET.RESPONSE, data=[0x00, 0x2A]))
     assert com.duty_cycle_available == 42
 
