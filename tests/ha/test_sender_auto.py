@@ -323,18 +323,18 @@ async def test_without_base_id_auto_devices_are_not_assigned_discovered_or_sent(
         await bridge._daemon._send_packet(rollo, [0xFF, 0xFF, 0xFF, 0xFF])
         bridge._daemon._encoder.send.assert_not_awaited()
     finally:
-        bridge._late_sender_task.cancel()
+        bridge._late_base_id_task.cancel()
 
 
 async def test_late_base_id_assigns_and_discovers_afterwards(tmp_path, fast_base_id_timeout):
     bridge, device_file = make_bridge(tmp_path, base=None)
     await bridge.before_connect()
     await bridge.after_connect()  # discovery ran without the auto devices
-    assert bridge._late_sender_task is not None
+    assert bridge._late_base_id_task is not None
 
     bridge._daemon.enocean_sender = list(BASE_BYTES)  # the stick finally answers
     bridge._daemon.base_id_ready.set()
-    await asyncio.wait_for(bridge._late_sender_task, timeout=2)
+    await asyncio.wait_for(bridge._late_base_id_task, timeout=2)
 
     assert senders_by_name(bridge)[PREFIX + "Rollo_Bad/a5"] == BASE + 6
     assert "sender: 0xFFAE7C86" in device_file.read_text()
@@ -350,7 +350,7 @@ async def test_late_base_id_before_first_connect_is_discovered_by_after_connect(
     await bridge.before_connect()
     bridge._daemon.enocean_sender = list(BASE_BYTES)  # answers before the broker connects
     bridge._daemon.base_id_ready.set()
-    await asyncio.wait_for(bridge._late_sender_task, timeout=2)
+    await asyncio.wait_for(bridge._late_base_id_task, timeout=2)
     assert PREFIX + "bridge/last_assigned_sender" not in published_topics(bridge)  # not connected
 
     await bridge.after_connect()
@@ -365,7 +365,7 @@ async def test_base_id_seen_on_a_reconnect_still_gets_the_device_discovered(
     bridge, _ = make_bridge(tmp_path, base=None)
     await bridge.before_connect()
     await bridge.after_connect()  # first connect: discovery ran without the auto devices
-    bridge._late_sender_task.cancel()  # the waiting task never got to run (worst case)
+    bridge._late_base_id_task.cancel()  # the waiting task never got to run (worst case)
 
     bridge._daemon.enocean_sender = list(BASE_BYTES)
     bridge._daemon.base_id_ready.set()
@@ -384,7 +384,7 @@ async def test_late_assignment_error_is_logged_not_swallowed(
     monkeypatch.setattr(bridge, "_resolve_senders", mock.Mock(side_effect=RuntimeError("boom")))
     bridge._daemon.base_id_ready.set()
     with caplog.at_level(logging.ERROR):
-        await asyncio.wait_for(bridge._late_sender_task, timeout=2)
+        await asyncio.wait_for(bridge._late_base_id_task, timeout=2)
     assert "Assigning the 'sender: auto' devices failed" in caplog.text
 
 
