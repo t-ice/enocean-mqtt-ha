@@ -98,10 +98,14 @@ PROFILES = {
     (0xa5, 0x13, 0x06): profile(0xa5, 0x13, 0x06, 'Geographic Position Exchange',
         case((
             LRNB_4BS,
-            field('LAT(MSB)', 'Latitude(MSB)', 0, 4, 'value'),
-            field('LOT(MSB)', 'Longitude(MSB)', 4, 4, 'value'),
-            field('LAT(LSB)', 'Latitude(LSB)', 8, 8, 'value', unit='°', range_min=0.0, range_max=4095.0, scale_min=-90.0, scale_max=90.0),
-            field('LOT(LSB)', 'Longitude(LSB)', 16, 8, 'value', unit='°', range_min=0.0, range_max=4095.0, scale_min=-180.0, scale_max=180.0),
+            # Latitude/longitude are 12-bit values split into a 4-bit MSB and an 8-bit LSB field. The
+            # engine decodes fields one by one, so both halves stay raw (as in A5-13-01 ID 6) and the
+            # HA template recombines them. Scaling the LSB alone as if it were the 12-bit value put
+            # 38.44° N at 30.03°.
+            field('LAT(MSB)', 'Latitude(MSB)', 0, 4, 'value', range_min=0.0, range_max=15.0, scale_min=0.0, scale_max=15.0),
+            field('LOT(MSB)', 'Longitude(MSB)', 4, 4, 'value', range_min=0.0, range_max=15.0, scale_min=0.0, scale_max=15.0),
+            field('LAT(LSB)', 'Latitude(LSB)', 8, 8, 'value', range_min=0.0, range_max=255.0, scale_min=0.0, scale_max=255.0),
+            field('LOT(LSB)', 'Longitude(LSB)', 16, 8, 'value', range_min=0.0, range_max=255.0, scale_min=0.0, scale_max=255.0),
             field('ID', 'Identifier', 24, 4, 'enum', items=(enum('', 6),)),
         )),
     ),
